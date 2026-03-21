@@ -137,3 +137,11 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Python
+ml-service/venv/
+ml-service/__pycache__/
+*.pyc
+
+# Temp files
+ml-service/temp.pdf

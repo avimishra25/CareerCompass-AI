@@ -1,14 +1,17 @@
 const express = require("express");
 const multer = require("multer");
 const cors = require("cors");
+const axios = require("axios");
+const fs = require("fs");
+const FormData = require("form-data");
 
-const app = express();
+const app = express();   // ✅ THIS WAS MISSING
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// File storage config
+// Storage config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "uploads/");
@@ -20,17 +23,33 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// Route
+// Test route
 app.get("/", (req, res) => {
   res.send("Backend running 🚀");
 });
 
-// Upload route
-app.post("/upload", upload.single("resume"), (req, res) => {
-  res.json({
-    message: "File uploaded successfully",
-    file: req.file,
-  });
+// Upload + NLP route
+app.post("/upload", upload.single("resume"), async (req, res) => {
+  try {
+    const filePath = req.file.path;
+
+    const formData = new FormData();
+    formData.append("resume", fs.createReadStream(filePath));
+
+    const response = await axios.post(
+      "http://127.0.0.1:8000/analyze",
+      formData,
+      {
+        headers: formData.getHeaders(),
+      }
+    );
+
+    res.json(response.data);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Error processing resume");
+  }
 });
 
 // Start server
