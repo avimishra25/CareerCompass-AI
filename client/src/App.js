@@ -1,20 +1,27 @@
 import React from "react";
+import Navbar from "./components/Navbar";
+import Hero from "./components/Hero";
 import UploadResume from "./pages/UploadResume";
+import Stats from "./components/Stats";        // ✅ import
+import Features from "./components/Features";  // ✅ import
 
 function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-gray-800 text-white">
       
-      <div className="text-center pt-16">
-        <h1 className="text-4xl font-bold">🚀 CareerCompass AI</h1>
-        <p className="text-gray-400 mt-2">
-          Analyze your resume & get career insights
-        </p>
-      </div>
+      <Navbar />
+      <Hero />
 
-      <div className="flex justify-center mt-12">
+      {/* Upload Section */}
+      <div className="flex justify-center mt-16">
         <UploadResume />
       </div>
+
+      {/* ✅ ADD HERE */}
+      <Stats />
+
+      {/* ✅ ADD HERE */}
+      <Features />
 
     </div>
   );
