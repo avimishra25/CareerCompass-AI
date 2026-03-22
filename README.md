@@ -220,10 +220,10 @@ NLP service runs at `http://localhost:8000`
 
 ## 📸 Screenshots
 
-![alt text](image-1.png)
-![alt text](image-2.png)
-![alt text](image-3.png)
-![alt text](image-4.png)
+<img width="1862" height="853" alt="Image" src="https://github.com/user-attachments/assets/03a78bb6-87b3-4280-a4d7-984953efdab5" />
+<img width="1877" height="906" alt="Image" src="https://github.com/user-attachments/assets/2fe5101a-7b83-477e-ae09-aebb14a60109" />
+<img width="1877" height="885" alt="Image" src="https://github.com/user-attachments/assets/ff6786bd-b654-44a1-86b5-35069ee0c90d" />
+<img width="1805" height="907" alt="Image" src="https://github.com/user-attachments/assets/7d9b3490-e12f-4106-92ed-261dcc6e5441" />
 
 ---
 
@@ -257,3 +257,5 @@ Built by **Avi Mishra** — feel free to connect or raise an issue for feedback 
 ---
 
 ⭐ If you find this project useful, consider giving it a star!
+
+[def]: image-5.png
