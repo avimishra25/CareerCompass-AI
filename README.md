@@ -1,6 +1,6 @@
 # 🧭 CareerCompass AI
 
-> An AI-powered career guidance platform that analyzes resumes, extracts skills using NLP, and recommends the most suitable career paths — with full user authentication and cloud database integration.
+> Drop your resume. Discover your skills, gaps, and the career path built for you.
 
 [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org)
@@ -12,21 +12,22 @@
 
 ## 📌 Overview
 
-CareerCompass AI is a full-stack web application that helps users understand their career alignment by analyzing their resumes using Natural Language Processing (NLP). It extracts skills from uploaded PDF resumes, evaluates compatibility with different job roles, identifies skill gaps, and recommends the most suitable career path — all behind a secure JWT-authenticated interface.
+CareerCompass AI is a full-stack web application that helps users understand their career alignment by analyzing their resumes using Natural Language Processing (NLP). It extracts skills from uploaded PDF resumes, evaluates compatibility with different job roles, identifies skill gaps, and recommends the most suitable career path — all behind a secure JWT-authenticated interface with a modern glassmorphism UI.
 
 ---
 
 ## ✨ Features
 
 - 🔐 **JWT Authentication** — Secure register/login with bcrypt password hashing
-- 📄 **Resume Upload** — PDF resume support via Multer
+- 📄 **Drag & Drop Resume Upload** — PDF support via Multer with live visual feedback
 - 🤖 **NLP Skill Extraction** — Python + spaCy based skill detection
-- 🎯 **Job Role Matching** — Algorithm matches extracted skills to predefined roles
-- 📊 **Match Percentage** — Score calculated for each career path
+- 🎯 **Job Role Matching** — Algorithm matches extracted skills to predefined career roles
+- 📊 **Match Percentage** — Score calculated for each career path with visual progress bars
 - ⚠️ **Skill Gap Analysis** — Identifies missing skills per role
 - ⭐ **Best Role Recommendation** — Highlights the top matching career
-- 📈 **Interactive Dashboard** — Visual progress bars for each role
-- ☁️ **Cloud Database** — MongoDB Atlas for persistent user storage
+- 🕓 **Analysis History** — Save, view and delete past resume analyses
+- 🎨 **Glassmorphism UI** — Soft frosted-glass design system (Linear/Vercel inspired)
+- ☁️ **Cloud Database** — MongoDB Atlas for persistent user and analysis storage
 
 ---
 
@@ -34,11 +35,12 @@ CareerCompass AI is a full-stack web application that helps users understand the
 
 | Layer | Technology |
 |---|---|
-| Frontend | React.js, Tailwind CSS, Axios |
+| Frontend | React.js 19, Tailwind CSS, Axios |
+| State Management | React AuthContext (global session) |
 | Backend | Node.js, Express.js, Multer |
 | Authentication | JWT, bcryptjs |
 | Database | MongoDB Atlas, Mongoose |
-| AI / NLP | Python, Flask, spaCy, pdfminer |
+| AI / NLP | Python, Flask, spaCy, pdfminer.six |
 
 ---
 
@@ -47,15 +49,17 @@ CareerCompass AI is a full-stack web application that helps users understand the
 ```
 User Uploads Resume (PDF)
         ↓
-Express Backend receives file
+Express Backend receives file (protected route — JWT required)
         ↓
 Forwarded to Python Flask NLP Service
         ↓
-spaCy extracts skills from text
+spaCy extracts skills from resume text
         ↓
 Backend matches skills against job role definitions
         ↓
 Match scores + missing skills calculated
+        ↓
+Analysis saved to MongoDB under user account
         ↓
 Best career role recommended
         ↓
@@ -68,19 +72,19 @@ Results displayed in React dashboard
 
 ```
 CareerCompass-AI/
-├── client/                  # React frontend
+├── client/                    # React frontend
 │   ├── src/
-│   │   ├── components/      # Navbar, Hero, Stats, Features
-│   │   ├── context/         # AuthContext (global auth state)
-│   │   ├── pages/           # AuthPage, UploadResume
+│   │   ├── components/        # Navbar, Hero, Stats, Features
+│   │   ├── context/           # AuthContext (global auth state)
+│   │   ├── pages/             # AuthPage, UploadResume, History, About
 │   │   └── App.js
-├── server/                  # Node.js backend
-│   ├── middleware/          # JWT auth middleware
-│   ├── models/              # Mongoose User model
-│   ├── routes/              # Auth routes (register, login, /me)
+├── server/                    # Node.js backend
+│   ├── middleware/            # JWT auth middleware
+│   ├── models/                # Mongoose User + Analysis models
+│   ├── routes/                # Auth routes (register, login, /me)
 │   ├── server.js
-│   └── .env                 # Environment variables (not committed)
-└── ml-service/              # Python NLP service
+│   └── .env                   # Environment variables (not committed)
+└── ml-service/                # Python NLP service
     └── app.py
 ```
 
@@ -91,7 +95,7 @@ CareerCompass-AI/
 ### Prerequisites
 - Node.js v18+
 - Python 3.8+
-- MongoDB Atlas account (free tier)
+- MongoDB Atlas account (free tier works fine)
 
 ---
 
@@ -141,6 +145,8 @@ npm install
 npm start
 ```
 
+App runs at `http://localhost:3000`
+
 ---
 
 ### 4. Python NLP Service Setup
@@ -160,6 +166,18 @@ python -m spacy download en_core_web_sm
 python app.py
 ```
 
+NLP service runs at `http://localhost:8000`
+
+---
+
+### Running All Three Services
+
+| Terminal | Command | Port |
+|---|---|---|
+| 1 — NLP | `python app.py` (inside ml-service with venv active) | 8000 |
+| 2 — Backend | `node server.js` (inside server/) | 5000 |
+| 3 — Frontend | `npm start` (inside client/) | 3000 |
+
 ---
 
 ## 🔐 Authentication Flow
@@ -167,8 +185,9 @@ python app.py
 1. User registers with name, email and password
 2. Password is hashed with bcrypt before storing in MongoDB
 3. JWT token is issued and stored in `localStorage`
-4. All protected routes (resume upload) require a valid `Bearer` token
-5. Token is verified server-side on every request
+4. All protected routes (resume upload, history) require a valid `Bearer` token
+5. Token is verified server-side on every protected request
+6. AuthContext manages global session state across the React app
 
 ---
 
@@ -177,26 +196,34 @@ python app.py
 ### ✅ Completed
 - JWT Authentication (Register / Login / Logout)
 - MongoDB Atlas integration with Mongoose
-- Resume PDF upload and processing
+- Resume PDF drag & drop upload
 - NLP-based skill extraction (spaCy)
 - Job role matching algorithm
 - Career recommendation engine
-- Responsive React dashboard with Tailwind CSS
+- Analysis history (save / view / delete)
+- Soft glassmorphism UI redesign
+- About page with project overview
+- Responsive Navbar with mobile hamburger menu
+- Staggered fade-up animations
+- Scroll-to-top navigation
+- Protected routes with JWT middleware
 
-## 📸 Screenshots
-<img width="1568" height="766" alt="image" src="https://github.com/user-attachments/assets/848ecdb0-0dfb-4c77-98c7-a57791d51a9f" />
-<img width="1568" height="689" alt="image" src="https://github.com/user-attachments/assets/412c773c-592d-45bd-b74f-188691147a70" />
-<img width="1568" height="757" alt="image" src="https://github.com/user-attachments/assets/7cc3af3a-ab3e-4a90-85b8-faf901e2fdea" />
-<img width="1517" height="784" alt="image" src="https://github.com/user-attachments/assets/08cce75a-cbef-496c-8643-7b7c3c402f10" />
+### 🔄 Upcoming
+- ATS resume scoring (score out of 100)
+- Downloadable PDF reports
+- Graphs & analytics dashboard
+- Career roadmap suggestions
+- Expanded job role definitions
+- Advanced NLP model improvements
 
 ---
 
-### 🔄 In Progress / Upcoming
-- User resume history tracking
-- Downloadable PDF reports
-- Expanded job role definitions
-- Advanced NLP model improvements
-- Enhanced UI/UX polish
+## 📸 Screenshots
+
+![alt text](image-1.png)
+![alt text](image-2.png)
+![alt text](image-3.png)
+![alt text](image-4.png)
 
 ---
 
@@ -207,6 +234,7 @@ python app.py
 - Graphs and analytics dashboard
 - Real job listing API integration (LinkedIn, Indeed)
 - AI chatbot for personalized career guidance
+- Resume comparison across multiple uploads
 
 ---
 
