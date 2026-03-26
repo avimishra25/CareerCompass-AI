@@ -1,34 +1,63 @@
 # 🧭 CareerCompass AI
 
-> Drop your resume. Discover your skills, gaps, and the career path built for you.
+> 🚀 AI-powered resume analyzer with ATS scoring, OpenAI feedback, and career guidance chatbot.
 
 [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org)
 [![React](https://img.shields.io/badge/React-19-blue.svg)](https://react.dev)
 [![Python](https://img.shields.io/badge/Python-3.8+-yellow.svg)](https://python.org)
+![AI Powered](https://img.shields.io/badge/AI-Powered-blueviolet)
+![ATS Optimized](https://img.shields.io/badge/ATS-Optimized-green)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green.svg)](https://mongodb.com/atlas)
 
 ---
 
 ## 📌 Overview
 
-CareerCompass AI is an AI-powered web application that analyzes resumes to help users discover their ideal career path. Using NLP techniques like spaCy-based skill extraction and TF-IDF scoring, it identifies key skills, matches them with relevant job roles, highlights skill gaps, and provides personalized career recommendations — all within a secure, modern full-stack platform.
+CareerCompass AI is an AI-powered career intelligence platform that analyzes resumes and guides users toward their ideal career path.
+
+It combines NLP (spaCy + TF-IDF) with AI (OpenAI) to not only extract skills and match roles, but also evaluate resumes using ATS-style scoring, identify improvement areas, and provide personalized career guidance through an interactive chatbot.
+
+The platform goes beyond analysis — it helps users understand *what to improve and how to improve it*.
 
 ---
 
 ## ✨ Features
 
-- 🔐 JWT Authentication with bcrypt security
-- 📄 Drag & Drop Resume Upload (PDF)
-- 🤖 NLP Skill Extraction using spaCy (lemmatization + smart matching)
-- 🧠 TF-IDF Based Skill Ranking
-- 🎯 Career Role Matching with match % score
-- ⚠️ Skill Gap Analysis for each role
-- ⭐ Best Role Recommendation
-- 📊 Dashboard with visual insights & progress bars
-- 🕓 Analysis History (save & manage reports)
-- ☁️ MongoDB Atlas cloud storage
-- 🎨 Modern Glassmorphism UI
+- 🔐 JWT Authentication with bcrypt security  
+- 📄 Drag & Drop Resume Upload (PDF)  
+
+### 🤖 AI & NLP Features
+- 🧠 NLP Skill Extraction using spaCy (lemmatization + smart matching)  
+- 📊 TF-IDF Based Skill Ranking  
+- 🎯 Career Role Matching with match % score  
+- ⚠️ Skill Gap Analysis for each role  
+- ⭐ Best Role Recommendation  
+
+### 🆕 AI-Powered Enhancements
+- 📊 ATS Resume Scoring (score out of 100)  
+- 🧠 OpenAI-powered resume analysis  
+- ⚠️ Personalized improvement suggestions to boost ATS score  
+- 💬 AI Chatbot for interactive career guidance  
+
+### 📊 Platform Features
+- 📊 Dashboard with visual insights & progress bars  
+- 🕓 Analysis History (save & manage reports)  
+- ☁️ MongoDB Atlas cloud storage  
+- 🎨 Modern Glassmorphism UI 
+
+---
+
+## 🧠 AI Capabilities
+
+CareerCompass AI now integrates OpenAI to move beyond static analysis:
+
+- Understands resume context, not just keywords  
+- Suggests meaningful improvements (not generic tips)  
+- Helps optimize resumes for ATS systems  
+- Enables interactive Q&A through chatbot  
+
+This transforms the platform from a **resume analyzer → career assistant**.
 
 ---
 
@@ -42,7 +71,20 @@ CareerCompass AI is an AI-powered web application that analyzes resumes to help 
 | File Handling | Multer (PDF uploads) |
 | Authentication | JWT, bcryptjs |
 | Database | MongoDB Atlas, Mongoose |
-| AI / NLP | Python, Flask, spaCy (lemmatization, NLP pipeline), TF-IDF, pdfminer.six (Resume Parsing) |
+| AI / NLP | Python, Flask, spaCy, TF-IDF, OpenAI API, pdfminer.six |
+
+---
+
+## 🏗️ Architecture
+
+CareerCompass AI follows a multi-service architecture:
+
+- React (Frontend UI)
+- Node.js + Express (API + Auth Layer)
+- Python Flask (NLP + AI Processing)
+- OpenAI API (Intelligent feedback & chatbot)
+
+This separation ensures scalability and modular development.
 
 ---
 
@@ -51,21 +93,28 @@ CareerCompass AI is an AI-powered web application that analyzes resumes to help 
 ```
 User Uploads Resume (PDF)
         ↓
-Express Backend receives file (protected route — JWT required)
+Express Backend receives file (JWT protected)
         ↓
-Forwarded to Python Flask NLP Service
+Resume sent to Python Flask NLP Service
         ↓
-spaCy extracts skills from resume text
+spaCy extracts skills + preprocessing
         ↓
-Backend matches skills against job role definitions
+TF-IDF ranks and filters important skills
         ↓
-Match scores + missing skills calculated
+Backend performs:
+    → Career role matching
+    → Skill gap analysis
+    → ATS scoring
         ↓
-Analysis saved to MongoDB under user account
+OpenAI analyzes resume:
+    → Provides improvement suggestions
+    → Generates personalized feedback
         ↓
-Best career role recommended
+User can interact via AI chatbot for guidance
         ↓
-Results displayed in React dashboard
+Results stored in MongoDB
+        ↓
+Displayed in React dashboard
 ```
 
 ---
@@ -153,6 +202,8 @@ App runs at `http://localhost:3000`
 
 ### 4. Python NLP Service Setup
 
+> ⚠️ This service handles both NLP processing and OpenAI-powered resume analysis & chatbot responses.
+
 ```bash
 cd ml-service
 python -m venv venv
@@ -163,12 +214,22 @@ venv\Scripts\activate
 # macOS / Linux
 source venv/bin/activate
 
-pip install flask spacy pdfminer.six
+pip install flask spacy pdfminer.six python-dotenv openai
 python -m spacy download en_core_web_sm
-python app.py
-```
 
 NLP service runs at `http://localhost:8000`
+```
+
+Create a `.env` file inside `/ml-service`:
+
+```env
+OPENAI_API_KEY=your_openai_api_key_here
+```
+
+Run the Service
+```
+python app.py
+```
 
 ---
 
@@ -197,26 +258,18 @@ NLP service runs at `http://localhost:8000`
 
 ### ✅ Completed
 - JWT Authentication (Register / Login / Logout)
-- MongoDB Atlas integration with Mongoose
-- Resume PDF drag & drop upload
+- Resume PDF upload system
 - NLP-based skill extraction (spaCy)
-- Job role matching algorithm
-- Career recommendation engine
+- TF-IDF skill ranking
+- Career role matching engine
+- Skill gap analysis
+- ATS Resume Scoring system
+- OpenAI-powered resume feedback
+- AI chatbot for career guidance
 - Analysis history (save / view / delete)
-- Soft glassmorphism UI redesign
-- About page with project overview
-- Responsive Navbar with mobile hamburger menu
-- Staggered fade-up animations
-- Scroll-to-top navigation
+- Dashboard with visual insights
+- Modern glassmorphism UI
 - Protected routes with JWT middleware
-
-### 🔄 Upcoming
-- ATS resume scoring (score out of 100)
-- Downloadable PDF reports
-- Graphs & analytics dashboard
-- Career roadmap suggestions
-- Expanded job role definitions
-- Advanced NLP model improvements
 
 ---
 
@@ -233,13 +286,21 @@ NLP service runs at `http://localhost:8000`
 
 ---
 
+## 🎥 Demo
+
+Coming soon...
+
+> Upload resume → Get ATS score → Improve with AI → Chat for guidance
+
+---
+
 ## 📈 Future Scope
 
-- ATS-based resume scoring system
-- Career roadmap and learning path suggestions
-- Graphs and analytics dashboard
+- Downloadable ATS reports (PDF)
+- Advanced analytics dashboard
+- Career roadmap & learning paths
 - Real job listing API integration (LinkedIn, Indeed)
-- AI chatbot for personalized career guidance
+- Improved AI chatbot with memory
 - Resume comparison across multiple uploads
 
 ---
@@ -262,4 +323,10 @@ Built by **Avi Mishra** — feel free to connect or raise an issue for feedback 
 
 ---
 
-⭐ If you find this project useful, consider giving it a star!
+## 🏷️ Tags
+
+AI • OpenAI • Resume Analyzer • ATS Scoring • NLP • Full Stack • Career Tech • React • Node.js • Python
+
+---
+
+⭐ If you found this project useful, consider giving it a star — it motivates me to keep building!
