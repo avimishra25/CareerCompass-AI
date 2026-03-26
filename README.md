@@ -125,7 +125,7 @@ Displayed in React dashboard
 CareerCompass-AI/
 ├── client/                    # React frontend
 │   ├── src/
-│   │   ├── components/        # Navbar, Hero, Stats, Features
+│   │   ├── components/        # Navbar, Hero, Stats, Features, CareerAgent, ATSReport
 │   │   ├── context/           # AuthContext (global auth state)
 │   │   ├── pages/             # AuthPage, UploadResume, History, About
 │   │   └── App.js
