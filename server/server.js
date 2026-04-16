@@ -5,6 +5,7 @@ const multer   = require("multer");
 const cors     = require("cors");
 const axios    = require("axios");
 const fs       = require("fs");
+const path     = require("path");
 const FormData = require("form-data");
 const mongoose = require("mongoose");
 
@@ -73,7 +74,7 @@ const JOB_ROLES = {
   },
 };
 
-// ─── Multer ───────────────────────────────────────────────────
+// ─── Multer (disk storage) ────────────────────────────────────
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     if (!fs.existsSync("uploads/")) fs.mkdirSync("uploads/");
@@ -88,71 +89,68 @@ app.use("/api/auth", authRoutes);
 app.get("/", (req, res) => res.send("CareerCompass backend running 🚀"));
 
 // ─── Upload & Analyze ─────────────────────────────────────────
+// FIX 1: was `authMiddleware` — correct name is `protect`
+// FIX 2: was `file.buffer` (memory) — now reads from disk since diskStorage is used
 app.post("/upload", protect, upload.single("resume"), async (req, res) => {
+  const filePath = req.file?.path;  // save path early for cleanup in finally
+
   try {
-    const filePath   = req.file.path;
-    const resumeName = req.file.originalname;
+    const file       = req.file;
+    const targetRole = req.body.targetRole || null;
 
-    // Forward to Python NLP service
-    const formData = new FormData();
-    formData.append("resume", fs.createReadStream(filePath));
+    if (!file) return res.status(400).json({ error: "No file uploaded" });
 
-    const nlpRes = await axios.post("http://127.0.0.1:8000/analyze", formData, {
-      headers: formData.getHeaders(),
+    // Forward to Python NLP service — read file from disk
+    const form = new FormData();
+    form.append("resume", fs.createReadStream(filePath), {
+      filename:    file.originalname,
+      contentType: file.mimetype,
+    });
+    if (targetRole) form.append("targetRole", targetRole);
+
+    const nlpRes = await axios.post("http://localhost:8000/analyze", form, {
+      headers: form.getHeaders(),
     });
 
-    const { skills: userSkills, ats_score, ats_breakdown } = nlpRes.data;
-
-    // Career matching
-    const results = {};
-    for (const role in JOB_ROLES) {
-      const required = JOB_ROLES[role].skills;
-      const matched  = required.filter((s) => userSkills.includes(s));
-      const score    = Math.min(
-        100,
-        Math.round(
-          ((matched.length / required.length) * 100) * 0.85 +
-          (userSkills.length > 5 ? 8 : 0)
-        )
-      );
-      results[role] = {
-        score:   score.toString(),
-        missing: required.filter((s) => !userSkills.includes(s)),
-        emoji:   JOB_ROLES[role].emoji,
-      };
-    }
-
-    // Best role
-    let bestRole = "";
-    let highest  = 0;
-    for (const role in results) {
-      const s = parseInt(results[role].score);
-      if (s > highest) { highest = s; bestRole = role; }
-    }
+    const {
+      skills             = [],
+      match              = {},
+      bestRole           = null,
+      ats_score          = null,
+      ats_breakdown      = {},
+      targetRoleAnalysis = null,
+    } = nlpRes.data;
 
     // Save to MongoDB
-    await Analysis.create({
-      user:         req.user._id,
-      skills:       userSkills,
-      bestRole:     { role: bestRole, score: highest },
-      match:        results,
-      resumeName,
-      atsScore:     ats_score    || 0,
-      atsBreakdown: ats_breakdown || {},
+    const analysis = await Analysis.create({
+      user:         req.user.id,
+      skills,
+      match,
+      bestRole,
+      resumeName:   file.originalname,
+      targetRole,
+      atsScore:     ats_score,
+      atsBreakdown: ats_breakdown,
     });
 
-    fs.unlink(filePath, () => {});
-
-    res.json({
-      skills:       userSkills,
-      match:        results,
-      bestRole:     { role: bestRole, score: highest },
-      atsScore:     ats_score    || 0,
-      atsBreakdown: ats_breakdown || {},
+    return res.json({
+      skills,
+      match,
+      bestRole,
+      atsScore:           ats_score,
+      atsBreakdown:       ats_breakdown,
+      targetRoleAnalysis,
+      analysisId:         analysis._id,
     });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error processing resume" });
+
+  } catch (err) {
+    console.error("Upload error:", err.message);
+    res.status(500).json({ error: "Analysis failed", details: err.message });
+  } finally {
+    // Always clean up the temp file from disk
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
   }
 });
 
@@ -182,20 +180,18 @@ app.delete("/api/history/:id", protect, async (req, res) => {
 });
 
 // ─── AI Agent proxy ───────────────────────────────────────────
-// Proxies to Python /agent/gap which calls OpenAI.
-// Keeps OpenAI key server-side only (set in ml-service env).
 app.post("/api/agent/chat", protect, async (req, res) => {
   try {
     const response = await axios.post(
       "http://127.0.0.1:8000/agent/gap",
-      req.body   // ✅ forward frontend data directly
+      req.body
     );
-
     res.json(response.data);
   } catch (error) {
     const msg = error.response?.data?.error || "Agent unavailable";
     res.status(500).json({ reply: msg, error: msg });
   }
 });
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));

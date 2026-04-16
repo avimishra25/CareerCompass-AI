@@ -6,17 +6,22 @@ import UploadResume from "./pages/UploadResume";
 import Stats from "./components/Stats";
 import Features from "./components/Features";
 import History from "./pages/History";
+import Compare from "./pages/Compare";
 import AuthPage from "./pages/AuthPage";
 import About from "./pages/About";
 import Dashboard from "./pages/Dashboard";
 
 function AppInner() {
   const { user, loading } = useAuth();
-  const [currentPage, setCurrentPage] = useState("home");
+  const [currentPage,  setCurrentPage]  = useState("home");
+  const [compareData,  setCompareData]  = useState({ analysisA: null, analysisB: null });
   const uploadRef = useRef(null);
 
-  // Scroll to top whenever page changes
-  const navigate = (page) => {
+  // Updated navigate — accepts optional data payload for Compare
+  const navigate = (page, data = {}) => {
+    if (page === "compare" && data.analysisA && data.analysisB) {
+      setCompareData({ analysisA: data.analysisA, analysisB: data.analysisB });
+    }
     setCurrentPage(page);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -133,8 +138,19 @@ function AppInner() {
         </div>
       }
 
-      {currentPage === "history" && <History />}
-      {currentPage === "about"   && <About   />}
+      {currentPage === "history" &&
+        <History onNavigate={navigate} />
+      }
+
+      {currentPage === "compare" &&
+        <Compare
+          analysisA={compareData.analysisA}
+          analysisB={compareData.analysisB}
+          onNavigate={navigate}
+        />
+      }
+
+      {currentPage === "about" && <About />}
     </div>
   );
 }
