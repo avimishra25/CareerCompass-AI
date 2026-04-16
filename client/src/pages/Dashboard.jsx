@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
+import ProgressTracker from "../components/ProgressTracker";
 
 export default function Dashboard({ onNavigate }) {
   const { user } = useAuth();
-  const [stats, setStats] = useState({ total: 0, topRole: null, lastAnalysis: null });
+  const [stats,   setStats]   = useState({ total: 0, topRole: null, lastAnalysis: null, avgAts: null });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -14,18 +15,23 @@ export default function Dashboard({ onNavigate }) {
     })
     .then(({ data }) => {
       const analyses = Array.isArray(data) ? data : [];
-      const total = analyses.length;
+      const total    = analyses.length;
 
-      // Find most frequent best role
       const roleCount = {};
       analyses.forEach(a => {
         const r = a.bestRole?.role;
         if (r) roleCount[r] = (roleCount[r] || 0) + 1;
       });
-      const topRole = Object.entries(roleCount).sort((a,b) => b[1]-a[1])[0]?.[0] || null;
+      const topRole = Object.entries(roleCount).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
       const lastAnalysis = analyses[0] || null;
 
-      setStats({ total, topRole, lastAnalysis });
+      // ── NEW: avg ATS score ──
+      const atsScores = analyses.filter(a => a.atsScore != null).map(a => a.atsScore);
+      const avgAts    = atsScores.length
+        ? Math.round(atsScores.reduce((s, v) => s + v, 0) / atsScores.length)
+        : null;
+
+      setStats({ total, topRole, lastAnalysis, avgAts });
     })
     .catch(() => {})
     .finally(() => setLoading(false));
@@ -34,12 +40,12 @@ export default function Dashboard({ onNavigate }) {
   const firstName = user?.name?.split(" ")[0] || "there";
 
   const featureCards = [
-    { emoji: "🧠", title: "NLP Skill Extraction", desc: "spaCy + TF-IDF ranks your skills by relevance from your resume text." },
-    { emoji: "🎯", title: "Role Matching", desc: "Your skills are matched against 10 career roles with compatibility scores." },
-    { emoji: "⚠️", title: "Skill Gap Analysis", desc: "See exactly which skills you're missing for each career path." },
-    { emoji: "⭐", title: "Best Role Recommendation", desc: "The role with the highest compatibility is highlighted as your best match." },
-    { emoji: "🕓", title: "Analysis History", desc: "Every analysis is saved so you can track your growth over time." },
-    { emoji: "🔐", title: "Secure & Private", desc: "Your data is protected with JWT auth and stored under your account only." },
+    { emoji: "🧠", title: "NLP Skill Extraction",   desc: "spaCy + TF-IDF ranks your skills by relevance from your resume text." },
+    { emoji: "🎯", title: "Target Role Analysis",   desc: "Set your goal role and see exactly how far you are from your dream job." },
+    { emoji: "⚠️", title: "Skill Gap Analysis",      desc: "See exactly which skills you're missing for each career path." },
+    { emoji: "📊", title: "ATS Score",               desc: "Get an ATS readiness score with a detailed breakdown and tips to improve." },
+    { emoji: "🕓", title: "Analysis History",        desc: "Every analysis is saved so you can track your growth over time." },
+    { emoji: "🔐", title: "Secure & Private",        desc: "Your data is protected with JWT auth and stored under your account only." },
   ];
 
   const sampleSkills = ["react", "python", "node", "mongodb", "express", "git", "javascript", "flask"];
@@ -75,7 +81,7 @@ export default function Dashboard({ onNavigate }) {
       </div>
 
       {/* ── Stats Row ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="glass rounded-2xl p-5 text-center">
           <p className="text-3xl font-extrabold gradient-text"
             style={{ fontFamily: "Plus Jakarta Sans, sans-serif" }}>
@@ -94,11 +100,21 @@ export default function Dashboard({ onNavigate }) {
             Top Matched Role
           </p>
         </div>
-        <div className="glass rounded-2xl p-5 text-center col-span-2 md:col-span-1">
+        {/* ── NEW: Avg ATS stat ── */}
+        <div className="glass rounded-2xl p-5 text-center">
+          <p className="text-3xl font-extrabold gradient-text"
+            style={{ fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+            {loading ? "—" : stats.avgAts != null ? stats.avgAts : "—"}
+          </p>
+          <p className="text-xs mt-1" style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+            Avg ATS Score
+          </p>
+        </div>
+        <div className="glass rounded-2xl p-5 text-center">
           <p className="text-lg font-extrabold gradient-text"
             style={{ fontFamily: "Plus Jakarta Sans, sans-serif" }}>
             {loading ? "—" : stats.lastAnalysis
-              ? new Date(stats.lastAnalysis.createdAt).toLocaleDateString("en-IN", { day:"numeric", month:"short" })
+              ? new Date(stats.lastAnalysis.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })
               : "Never"}
           </p>
           <p className="text-xs mt-1" style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
@@ -106,6 +122,11 @@ export default function Dashboard({ onNavigate }) {
           </p>
         </div>
       </div>
+
+      {/* ── NEW: Progress Tracker (only renders if 2+ analyses exist) ── */}
+      {!loading && stats.total >= 2 && (
+        <ProgressTracker />
+      )}
 
       {/* ── Preview Section ── */}
       <div className="glass rounded-3xl p-8">
@@ -119,8 +140,6 @@ export default function Dashboard({ onNavigate }) {
         </h2>
 
         <div className="grid md:grid-cols-2 gap-6">
-
-          {/* Sample Skills */}
           <div style={{ background: "rgba(255,255,255,0.5)", borderRadius: "16px", padding: "20px" }}>
             <p className="text-sm font-bold mb-3 flex items-center gap-2"
               style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
@@ -136,7 +155,6 @@ export default function Dashboard({ onNavigate }) {
             </div>
           </div>
 
-          {/* Sample Roles */}
           <div style={{ background: "rgba(255,255,255,0.5)", borderRadius: "16px", padding: "20px" }}>
             <p className="text-sm font-bold mb-4"
               style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
@@ -160,7 +178,6 @@ export default function Dashboard({ onNavigate }) {
               ))}
             </div>
           </div>
-
         </div>
 
         <button
@@ -196,12 +213,12 @@ export default function Dashboard({ onNavigate }) {
       {/* ── Quick Links ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "Analyze Resume", emoji: "📄", page: "analyze" },
-          { label: "View History",   emoji: "🕓", page: "history" },
-          { label: "About Project",  emoji: "ℹ️",  page: "about"   },
-          { label: "My Profile",     emoji: "👤", page: "profile"  },
+          { label: "Analyze Resume", emoji: "📄", page: "analyze"  },
+          { label: "View History",   emoji: "🕓", page: "history"  },
+          { label: "Compare",        emoji: "🔀", page: "history"  },
+          { label: "About Project",  emoji: "ℹ️",  page: "about"    },
         ].map(({ label, emoji, page }) => (
-          <button key={page}
+          <button key={label}
             onClick={() => onNavigate(page)}
             className="glass rounded-2xl p-5 text-center hover:scale-105 transition-transform duration-200">
             <div className="text-2xl mb-2">{emoji}</div>
