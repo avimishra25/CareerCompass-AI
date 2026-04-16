@@ -1,20 +1,43 @@
 import React, { useState, useRef } from "react";
 import axios from "axios";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 import ATSReport from "../components/ATSReport";
 import CareerAgent from "../components/CareerAgent";
 
+// ── Target role options (must match ROLE_DEFINITIONS keys in app.py) ──
+const TARGET_ROLES = [
+  { value: "",                      label: "Auto-detect best match" },
+  { value: "fullstack developer",   label: "💻 Fullstack Developer"   },
+  { value: "frontend developer",    label: "🎨 Frontend Developer"    },
+  { value: "backend developer",     label: "⚙️ Backend Developer"     },
+  { value: "data scientist",        label: "📊 Data Scientist"        },
+  { value: "devops engineer",       label: "🛠️ DevOps Engineer"       },
+  { value: "ml engineer",           label: "🤖 ML Engineer"           },
+  { value: "mobile developer",      label: "📱 Mobile Developer"      },
+  { value: "cloud architect",       label: "☁️ Cloud Architect"       },
+  { value: "cybersecurity analyst", label: "🔐 Cybersecurity Analyst" },
+  { value: "ui/ux designer",        label: "✏️ UI/UX Designer"        },
+  { value: "database administrator",label: "🗄️ Database Administrator"},
+  { value: "blockchain developer",  label: "🔗 Blockchain Developer"  },
+];
+
 export default function UploadResume() {
-  const [file,        setFile]        = useState(null);
-  const [isDragging,  setDragging]    = useState(false);
-  const [skills,      setSkills]      = useState([]);
-  const [matchData,   setMatchData]   = useState({});
-  const [bestRole,    setBestRole]    = useState(null);
-  const [atsScore,    setAtsScore]    = useState(null);
-  const [atsBreakdown,setAtsBreakdown]= useState({});
-  const [loading,     setLoading]     = useState(false);
-  const [error,       setError]       = useState("");
-  const fileRef = useRef();
-  const token   = localStorage.getItem("token");
+  const [file,             setFile]             = useState(null);
+  const [isDragging,       setDragging]          = useState(false);
+  const [targetRole,       setTargetRole]        = useState("");
+  const [skills,           setSkills]            = useState([]);
+  const [matchData,        setMatchData]         = useState({});
+  const [bestRole,         setBestRole]          = useState(null);
+  const [targetRoleData,   setTargetRoleData]    = useState(null);
+  const [atsScore,         setAtsScore]          = useState(null);
+  const [atsBreakdown,     setAtsBreakdown]      = useState({});
+  const [loading,          setLoading]           = useState(false);
+  const [pdfLoading,       setPdfLoading]        = useState(false);
+  const [error,            setError]             = useState("");
+  const fileRef    = useRef();
+  const reportRef  = useRef();   // ← used for PDF export
+  const token      = localStorage.getItem("token");
 
   const handleFile = (f) => {
     if (f?.type === "application/pdf") { setFile(f); setError(""); }
@@ -25,24 +48,67 @@ export default function UploadResume() {
     if (!file) { setError("Please select a resume first."); return; }
     const fd = new FormData();
     fd.append("resume", file);
+    // ── NEW: send targetRole to Flask ──
+    if (targetRole) fd.append("targetRole", targetRole);
+
     try {
       setLoading(true); setError("");
       setSkills([]); setMatchData({}); setBestRole(null);
-      setAtsScore(null); setAtsBreakdown({});
+      setAtsScore(null); setAtsBreakdown({}); setTargetRoleData(null);
 
       const res = await axios.post("http://localhost:5000/upload", fd, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
-      setSkills(res.data.skills       || []);
-      setMatchData(res.data.match     || {});
+      setSkills(res.data.skills              || []);
+      setMatchData(res.data.match            || {});
       setBestRole(res.data.bestRole);
-      setAtsScore(res.data.atsScore   ?? null);
-      setAtsBreakdown(res.data.atsBreakdown || {});
+      setAtsScore(res.data.atsScore          ?? null);
+      setAtsBreakdown(res.data.atsBreakdown  || {});
+      // ── NEW: set target role analysis ──
+      setTargetRoleData(res.data.targetRoleAnalysis || null);
     } catch (err) {
       if (err.response?.status === 401) { localStorage.removeItem("token"); window.location.reload(); }
       setError("Upload failed. Is the NLP server running?");
     } finally { setLoading(false); }
+  };
+
+  // ── PDF Download ──────────────────────────────────────────
+  const handleDownloadPDF = async () => {
+    if (!reportRef.current) return;
+    try {
+      setPdfLoading(true);
+      const canvas = await html2canvas(reportRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#f0f2f7",
+        logging: false,
+      });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf     = new jsPDF("p", "mm", "a4");
+      const pageW   = pdf.internal.pageSize.getWidth();
+      const pageH   = pdf.internal.pageSize.getHeight();
+      const imgH    = (canvas.height * pageW) / canvas.width;
+      let position  = 0;
+
+      pdf.addImage(imgData, "PNG", 0, position, pageW, imgH);
+
+      // Handle multi-page if content is tall
+      let heightLeft = imgH - pageH;
+      while (heightLeft > 0) {
+        position = heightLeft - imgH;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, pageW, imgH);
+        heightLeft -= pageH;
+      }
+
+      const fileName = `CareerCompass-Report-${file?.name?.replace(".pdf", "") || "resume"}.pdf`;
+      pdf.save(fileName);
+    } catch (e) {
+      console.error("PDF export failed:", e);
+    } finally {
+      setPdfLoading(false);
+    }
   };
 
   const scoreColor = (s) => {
@@ -68,6 +134,50 @@ export default function UploadResume() {
             style={{ color: "var(--text-2)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
             Upload a PDF — AI extracts skills, scores your ATS readiness, and matches you to 12 career paths.
           </p>
+
+          {/* ── NEW: Target Role Selector ── */}
+          <div className="mb-5">
+            <label className="block text-xs font-semibold uppercase tracking-widest mb-2"
+              style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+              🎯 Target Role <span style={{ color: "var(--text-3)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional — set your goal)</span>
+            </label>
+            <div className="relative">
+              <select
+                value={targetRole}
+                onChange={(e) => setTargetRole(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "12px 40px 12px 16px",
+                  borderRadius: "12px",
+                  border: targetRole
+                    ? "1.5px solid rgba(59,110,248,0.5)"
+                    : "1.5px solid rgba(180,190,220,0.4)",
+                  background: targetRole ? "rgba(59,110,248,0.04)" : "rgba(255,255,255,0.5)",
+                  color: "var(--text)",
+                  fontFamily: "Plus Jakarta Sans, sans-serif",
+                  fontSize: "0.875rem",
+                  fontWeight: targetRole ? 600 : 400,
+                  appearance: "none",
+                  cursor: "pointer",
+                  outline: "none",
+                  transition: "all 0.2s",
+                }}>
+                {TARGET_ROLES.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+              <span style={{
+                position: "absolute", right: 14, top: "50%",
+                transform: "translateY(-50%)",
+                pointerEvents: "none", fontSize: "0.7rem", color: "var(--text-3)",
+              }}>▼</span>
+            </div>
+            {targetRole && (
+              <p className="text-xs mt-1.5" style={{ color: "#3b6ef8", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+                Analysis will be benchmarked specifically against <strong>{targetRole}</strong>
+              </p>
+            )}
+          </div>
 
           {/* Drop zone */}
           <div
@@ -132,93 +242,176 @@ export default function UploadResume() {
         {hasResults && (
           <div className="space-y-5">
 
-            {/* Best match banner */}
-            {bestRole && (
-              <div className="glass rounded-3xl p-6 flex items-center justify-between flex-wrap gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider mb-1"
-                    style={{ color: "var(--text-3)" }}>Best Career Match</p>
-                  <h3 className="text-xl font-bold capitalize gradient-text"
-                    style={{ fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                    {matchData[bestRole.role]?.emoji} {bestRole.role}
-                  </h3>
-                </div>
-                <div className="text-right">
-                  <span className="text-4xl font-extrabold gradient-text"
-                    style={{ fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                    {bestRole.score}%
-                  </span>
-                  <p className="text-xs mt-0.5" style={{ color: "var(--text-3)" }}>compatibility</p>
-                </div>
-              </div>
-            )}
-
-            {/* ATS Score Report */}
-            {atsScore !== null && (
-              <ATSReport atsScore={atsScore} atsBreakdown={atsBreakdown} />
-            )}
-
-            <div className="grid md:grid-cols-2 gap-5">
-
-              {/* Skills */}
-              {skills.length > 0 && (
-                <div className="glass rounded-2xl p-6">
-                  <h3 className="font-bold text-sm mb-3 flex items-center gap-2"
-                    style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                    🧠 Extracted Skills
-                    <span className="ml-auto text-xs font-normal" style={{ color: "var(--text-3)" }}>
-                      {skills.length} found
-                    </span>
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {skills.map((s, i) => (
-                      <span key={i} className="skill-pill">{s}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Career Match */}
-              {Object.keys(matchData).length > 0 && (
-                <div className="glass rounded-2xl p-6">
-                  <h3 className="font-bold text-sm mb-4"
-                    style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                    🎯 Career Match
-                  </h3>
-                  <div className="space-y-4">
-                    {Object.entries(matchData)
-                      .sort((a, b) => parseInt(b[1].score) - parseInt(a[1].score))
-                      .map(([role, data]) => (
-                        <div key={role}>
-                          <div className="flex justify-between mb-1.5">
-                            <span className="text-sm font-medium capitalize"
-                              style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                              {data.emoji} {role}
-                            </span>
-                            <span className="text-sm font-bold" style={{ color: scoreColor(data.score) }}>
-                              {data.score}%
-                            </span>
-                          </div>
-                          <div className="progress-track">
-                            <div className="progress-fill"
-                              style={{
-                                width: `${data.score}%`,
-                                background: `linear-gradient(90deg, ${scoreColor(data.score)}, #6c63ff)`,
-                              }} />
-                          </div>
-                          {data.missing?.length > 0 && (
-                            <p className="text-xs mt-1" style={{ color: "var(--text-3)" }}>
-                              Missing: {data.missing.slice(0, 4).join(", ")}
-                              {data.missing.length > 4 ? ` +${data.missing.length - 4} more` : ""}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
-
+            {/* ── PDF Download button ── */}
+            <div className="flex justify-end">
+              <button
+                onClick={handleDownloadPDF}
+                disabled={pdfLoading}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                style={{
+                  background: pdfLoading ? "rgba(59,110,248,0.1)" : "rgba(59,110,248,0.08)",
+                  border: "1.5px solid rgba(59,110,248,0.25)",
+                  color: "#3b6ef8",
+                  fontFamily: "Plus Jakarta Sans, sans-serif",
+                  cursor: pdfLoading ? "not-allowed" : "pointer",
+                }}>
+                {pdfLoading ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                    Generating PDF…
+                  </>
+                ) : (
+                  <>📥 Download Report (PDF)</>
+                )}
+              </button>
             </div>
+
+            {/* ── Printable report area ── */}
+            <div ref={reportRef} className="space-y-5" style={{ background: "transparent" }}>
+
+              {/* ── NEW: Target Role spotlight banner ── */}
+              {targetRoleData && (
+                <div className="glass rounded-3xl p-6"
+                  style={{ border: "1.5px solid rgba(59,110,248,0.3)", background: "rgba(59,110,248,0.04)" }}>
+                  <p className="text-xs font-semibold uppercase tracking-wider mb-1"
+                    style={{ color: "#3b6ef8", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+                    🎯 Your Target Role Analysis
+                  </p>
+                  <div className="flex items-center justify-between flex-wrap gap-4">
+                    <div>
+                      <h3 className="text-xl font-bold capitalize"
+                        style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+                        {targetRoleData.emoji} {targetRoleData.role}
+                      </h3>
+                      {targetRoleData.missing?.length > 0 && (
+                        <p className="text-xs mt-1.5" style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+                          Skills to acquire: {" "}
+                          <span style={{ color: "#e11d6a", fontWeight: 600 }}>
+                            {targetRoleData.missing.slice(0, 6).join(", ")}
+                            {targetRoleData.missing.length > 6 ? ` +${targetRoleData.missing.length - 6} more` : ""}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <span className="text-4xl font-extrabold"
+                        style={{
+                          color: targetRoleData.score >= 70 ? "#10b981" : targetRoleData.score >= 40 ? "#3b6ef8" : "#f59e0b",
+                          fontFamily: "Plus Jakarta Sans, sans-serif",
+                        }}>
+                        {targetRoleData.score}%
+                      </span>
+                      <p className="text-xs mt-0.5" style={{ color: "var(--text-3)" }}>readiness</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Best match banner (auto-detected) */}
+              {bestRole && !targetRoleData && (
+                <div className="glass rounded-3xl p-6 flex items-center justify-between flex-wrap gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider mb-1"
+                      style={{ color: "var(--text-3)" }}>Best Career Match</p>
+                    <h3 className="text-xl font-bold capitalize gradient-text"
+                      style={{ fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+                      {matchData[bestRole.role]?.emoji} {bestRole.role}
+                    </h3>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-4xl font-extrabold gradient-text"
+                      style={{ fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+                      {bestRole.score}%
+                    </span>
+                    <p className="text-xs mt-0.5" style={{ color: "var(--text-3)" }}>compatibility</p>
+                  </div>
+                </div>
+              )}
+
+              {/* ATS Score Report */}
+              {atsScore !== null && (
+                <ATSReport atsScore={atsScore} atsBreakdown={atsBreakdown} />
+              )}
+
+              <div className="grid md:grid-cols-2 gap-5">
+
+                {/* Skills */}
+                {skills.length > 0 && (
+                  <div className="glass rounded-2xl p-6">
+                    <h3 className="font-bold text-sm mb-3 flex items-center gap-2"
+                      style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+                      🧠 Extracted Skills
+                      <span className="ml-auto text-xs font-normal" style={{ color: "var(--text-3)" }}>
+                        {skills.length} found
+                      </span>
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {skills.map((s, i) => (
+                        <span key={i} className="skill-pill">{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Career Match */}
+                {Object.keys(matchData).length > 0 && (
+                  <div className="glass rounded-2xl p-6">
+                    <h3 className="font-bold text-sm mb-4"
+                      style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+                      🎯 Career Match
+                    </h3>
+                    <div className="space-y-4">
+                      {Object.entries(matchData)
+                        .sort((a, b) => parseInt(b[1].score) - parseInt(a[1].score))
+                        .map(([role, data]) => (
+                          <div key={role}>
+                            <div className="flex justify-between mb-1.5">
+                              <span className="text-sm font-medium capitalize"
+                                style={{
+                                  color: role === targetRole ? "#3b6ef8" : "var(--text)",
+                                  fontFamily: "Plus Jakarta Sans, sans-serif",
+                                  fontWeight: role === targetRole ? 700 : 500,
+                                }}>
+                                {data.emoji} {role}
+                                {role === targetRole && (
+                                  <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full"
+                                    style={{ background: "rgba(59,110,248,0.1)", color: "#3b6ef8" }}>
+                                    target
+                                  </span>
+                                )}
+                              </span>
+                              <span className="text-sm font-bold" style={{ color: scoreColor(data.score) }}>
+                                {data.score}%
+                              </span>
+                            </div>
+                            <div className="progress-track">
+                              <div className="progress-fill"
+                                style={{
+                                  width: `${data.score}%`,
+                                  background: role === targetRole
+                                    ? "linear-gradient(90deg, #3b6ef8, #06b6d4)"
+                                    : `linear-gradient(90deg, ${scoreColor(data.score)}, #6c63ff)`,
+                                }} />
+                            </div>
+                            {data.missing?.length > 0 && (
+                              <p className="text-xs mt-1" style={{ color: "var(--text-3)" }}>
+                                Missing: {data.missing.slice(0, 4).join(", ")}
+                                {data.missing.length > 4 ? ` +${data.missing.length - 4} more` : ""}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            </div>
+            {/* ── end printable area ── */}
+
           </div>
         )}
       </div>
@@ -231,6 +424,7 @@ export default function UploadResume() {
           atsBreakdown={atsBreakdown}
           bestRole={bestRole}
           matchData={matchData}
+          targetRole={targetRole}
         />
       )}
     </section>
