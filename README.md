@@ -38,7 +38,24 @@ The platform goes beyond analysis — it helps users understand *what to improve
 - 📊 ATS Resume Scoring (score out of 100)  
 - 🧠 OpenAI-powered resume analysis  
 - ⚠️ Personalized improvement suggestions to boost ATS score  
-- 💬 AI Chatbot for interactive career guidance  
+- 💬 AI Chatbot for interactive career guidance
+
+### 🎯 Target Role Optimization
+- Select target role before analysis
+- Role-specific scoring and feedback
+- Resume tailored to job requirements
+
+### 📄 Downloadable ATS Report (PDF)
+- Export full analysis report as PDF
+- Frontend-based (no backend load)
+
+### 🔀 Resume Comparison System
+- Compare multiple resumes side-by-side
+- Built using saved history data
+
+### 📊 Skills Progress Tracker
+- Helps users measure improvement
+- Integrated into dashboard
 
 ### 📊 Platform Features
 - 📊 Dashboard with visual insights & progress bars  
@@ -125,9 +142,9 @@ Displayed in React dashboard
 CareerCompass-AI/
 ├── client/                    # React frontend
 │   ├── src/
-│   │   ├── components/        # Navbar, Hero, Stats, Features, CareerAgent, ATSReport
+│   │   ├── components/        # Navbar, Hero, Stats, Features, CareerAgent, ATSReport, ProgressTracker
 │   │   ├── context/           # AuthContext (global auth state)
-│   │   ├── pages/             # AuthPage, UploadResume, History, About
+│   │   ├── pages/             # AuthPage, UploadResume, History, About, Compare
 │   │   └── App.js
 ├── server/                    # Node.js backend
 │   ├── middleware/            # JWT auth middleware
@@ -267,6 +284,9 @@ python app.py
 - OpenAI-powered resume feedback
 - AI chatbot for career guidance
 - Analysis history (save / view / delete)
+- Resume Comparison
+- Progress Tracker
+- PDF Report Export
 - Dashboard with visual insights
 - Modern glassmorphism UI
 - Protected routes with JWT middleware
@@ -296,12 +316,10 @@ Coming soon...
 
 ## 📈 Future Scope
 
-- Downloadable ATS reports (PDF)
 - Advanced analytics dashboard
 - Career roadmap & learning paths
 - Real job listing API integration (LinkedIn, Indeed)
 - Improved AI chatbot with memory
-- Resume comparison across multiple uploads
 
 ---
 
