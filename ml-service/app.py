@@ -106,6 +106,22 @@ ALIASES = {
     "microsoft azure":    "azure",
 }
 
+# ─── Role definitions (skills required per role) ─────────────
+ROLE_DEFINITIONS = {
+    "fullstack developer":   {"emoji": "💻", "skills": ["react","node","express","mongodb","javascript","html","css","rest api","git"]},
+    "frontend developer":    {"emoji": "🎨", "skills": ["react","html","css","javascript","typescript","tailwind","redux","figma","vue","angular"]},
+    "backend developer":     {"emoji": "⚙️",  "skills": ["node","express","python","django","flask","postgresql","mongodb","redis","docker","rest api"]},
+    "data scientist":        {"emoji": "📊", "skills": ["python","pandas","numpy","scikit-learn","tensorflow","pytorch","matplotlib","sql","machine learning","r"]},
+    "devops engineer":       {"emoji": "🛠️",  "skills": ["docker","kubernetes","aws","linux","git","terraform","ansible","jenkins","github actions","nginx"]},
+    "ml engineer":           {"emoji": "🤖", "skills": ["python","tensorflow","pytorch","scikit-learn","pandas","numpy","mlflow","docker","aws","deep learning"]},
+    "mobile developer":      {"emoji": "📱", "skills": ["react native","flutter","android","ios","kotlin","swift","firebase","redux","expo"]},
+    "cloud architect":       {"emoji": "☁️",  "skills": ["aws","azure","gcp","terraform","kubernetes","docker","microservices","linux","networking","ci/cd"]},
+    "cybersecurity analyst": {"emoji": "🔐", "skills": ["networking","ethical hacking","firewalls","siem","cryptography","penetration testing","owasp","linux","cybersecurity"]},
+    "ui/ux designer":        {"emoji": "✏️",  "skills": ["figma","adobe xd","sketch","wireframing","prototyping","user research","ui design","ux design","css","html"]},
+    "database administrator":{"emoji": "🗄️",  "skills": ["postgresql","mysql","mongodb","redis","elasticsearch","sql","performance tuning","backup","replication"]},
+    "blockchain developer":  {"emoji": "🔗", "skills": ["solidity","ethereum","web3","smart contracts","rust","go","cryptography","node","react"]},
+}
+
 # ─── ATS scoring weights ──────────────────────────────────────
 ATS_SECTIONS    = ["education", "experience", "skills", "projects", "summary",
                    "contact", "certifications", "achievements", "work experience",
@@ -138,7 +154,7 @@ def extract_skills(raw_text):
             detected.add(skill)
 
     # Pass 2: spaCy lemmatization fallback
-    doc = nlp(normalized[:50000])   # cap to avoid memory issues
+    doc = nlp(normalized[:50000])
     lemmas = " ".join([t.lemma_ for t in doc if not t.is_punct and len(t.text) > 1])
     noun_chunks = " ".join([c.text for c in doc.noun_chunks])
     combined = lemmas + " " + noun_chunks
@@ -168,6 +184,44 @@ def rank_skills_tfidf(raw_text, detected_skills):
         return detected_skills
 
 
+def match_roles(detected_skills, target_role=None):
+    """
+    Match detected skills against all role definitions.
+    If target_role is provided, it gets a dedicated top-level highlight.
+    Returns match dict and bestRole.
+    """
+    skill_set = set(detected_skills)
+    results = {}
+
+    for role, info in ROLE_DEFINITIONS.items():
+        required = info["skills"]
+        matched  = [s for s in required if s in skill_set]
+        missing  = [s for s in required if s not in skill_set]
+        score    = round((len(matched) / len(required)) * 100) if required else 0
+
+        results[role] = {
+            "score":   score,
+            "missing": missing,
+            "emoji":   info["emoji"],
+        }
+
+    # Sort by score
+    sorted_roles = sorted(results.items(), key=lambda x: -x[1]["score"])
+    best_role    = sorted_roles[0] if sorted_roles else None
+
+    best_role_obj = {"role": best_role[0], "score": best_role[1]["score"]} if best_role else None
+
+    # If target role specified, bump it to bestRole if it exists
+    target_role_data = None
+    if target_role and target_role.lower() in results:
+        target_role_data = {
+            "role":  target_role.lower(),
+            "score": results[target_role.lower()]["score"],
+        }
+
+    return results, best_role_obj, target_role_data
+
+
 def compute_ats_score(raw_text, detected_skills):
     """
     ATS Score breakdown (total 100):
@@ -181,22 +235,14 @@ def compute_ats_score(raw_text, detected_skills):
     words      = raw_text.split()
     word_count = len(words)
 
-    # 1. Skills (30 pts) — more unique skills = higher score, cap at 30
-    skill_score = min(30, len(detected_skills) * 1.5)
-
-    # 2. Action verbs (20 pts) — 2 pts per unique verb found, cap 20
-    found_verbs = [v for v in ACTION_VERBS if v in text_lower]
-    verb_score  = min(20, len(set(found_verbs)) * 2)
-
-    # 3. Quantified results (20 pts) — 4 pts per pattern found, cap 20
-    quant_hits = sum(1 for p in QUANT_PATTERNS if re.search(p, text_lower))
-    quant_score = min(20, quant_hits * 4)
-
-    # 4. Sections present (20 pts) — 2 pts per section detected, cap 20
+    skill_score  = min(30, len(detected_skills) * 1.5)
+    found_verbs  = [v for v in ACTION_VERBS if v in text_lower]
+    verb_score   = min(20, len(set(found_verbs)) * 2)
+    quant_hits   = sum(1 for p in QUANT_PATTERNS if re.search(p, text_lower))
+    quant_score  = min(20, quant_hits * 4)
     section_hits = sum(1 for s in ATS_SECTIONS if re.search(r'\b' + re.escape(s) + r'\b', text_lower))
     section_score = min(20, section_hits * 2)
 
-    # 5. Length & density (10 pts)
     if 300 <= word_count <= 700:
         length_score = 10
     elif 700 < word_count <= 1200:
@@ -210,13 +256,13 @@ def compute_ats_score(raw_text, detected_skills):
     total = min(100, max(0, total))
 
     breakdown = {
-        "skills":      {"score": int(skill_score),   "max": 30, "label": "Skill coverage"},
-        "verbs":       {"score": int(verb_score),     "max": 20, "label": "Action verbs",
-                        "found": list(set(found_verbs))[:8]},
-        "quantified":  {"score": int(quant_score),    "max": 20, "label": "Quantified results"},
-        "sections":    {"score": int(section_score),  "max": 20, "label": "Resume sections"},
-        "length":      {"score": int(length_score),   "max": 10, "label": "Length & density",
-                        "words": word_count},
+        "skills":     {"score": int(skill_score),    "max": 30, "label": "Skill coverage"},
+        "verbs":      {"score": int(verb_score),      "max": 20, "label": "Action verbs",
+                       "found": list(set(found_verbs))[:8]},
+        "quantified": {"score": int(quant_score),     "max": 20, "label": "Quantified results"},
+        "sections":   {"score": int(section_score),   "max": 20, "label": "Resume sections"},
+        "length":     {"score": int(length_score),    "max": 10, "label": "Length & density",
+                       "words": word_count},
     }
 
     return total, breakdown
@@ -226,7 +272,10 @@ def compute_ats_score(raw_text, detected_skills):
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    file      = request.files["resume"]
+    file        = request.files["resume"]
+    # ── NEW: read targetRole from form data ──
+    target_role = request.form.get("targetRole", None)
+
     file_path = f"temp_{uuid.uuid4().hex}.pdf"
     file.save(file_path)
 
@@ -239,13 +288,29 @@ def analyze():
         ranked    = rank_skills_tfidf(raw_text, detected)
         ats_total, ats_breakdown = compute_ats_score(raw_text, ranked)
 
-        return jsonify({
+        # ── NEW: use role matching function ──
+        match_results, best_role_obj, target_role_data = match_roles(ranked, target_role)
+
+        response_data = {
             "skills":        ranked,
             "total_found":   len(ranked),
+            "match":         match_results,
+            "bestRole":      best_role_obj,
             "ats_score":     ats_total,
             "ats_breakdown": ats_breakdown,
-            "raw_text":      raw_text[:8000],   # pass to agent route (truncated)
-        })
+            "raw_text":      raw_text[:8000],
+        }
+
+        # ── NEW: include target role analysis if provided ──
+        if target_role_data:
+            response_data["targetRoleAnalysis"] = {
+                "role":    target_role_data["role"],
+                "score":   target_role_data["score"],
+                "missing": match_results.get(target_role_data["role"], {}).get("missing", []),
+                "emoji":   match_results.get(target_role_data["role"], {}).get("emoji", "🎯"),
+            }
+
+        return jsonify(response_data)
 
     finally:
         if os.path.exists(file_path):
@@ -267,51 +332,49 @@ def agent_gap():
         ats_breakdown = data.get("atsBreakdown", {})
         user_message  = data.get("message", "Analyze my resume")
         history       = data.get("history", [])
+        # ── NEW: target role context for chatbot ──
+        target_role   = data.get("targetRole", None)
 
-        # 🔥 FIX: ensure best_role is always dict
         if isinstance(best_role, str):
             best_role = {"role": best_role, "score": 0}
 
-        print("SKILLS:", user_skills)
-        print("ROLE:", best_role)
+        role_context = target_role if target_role else best_role.get('role', 'unknown')
 
         system_prompt = f"""
 You are a career advisor AI.
 
 Candidate skills: {', '.join(user_skills)}
-Predicted role: {best_role.get('role', 'unknown')}
+Predicted best role: {best_role.get('role', 'unknown')}
+{f"User's target role: {target_role}" if target_role else ""}
+ATS Score: {ats_score}/100
 
 STRICT RULES:
-- Focus ONLY on the predicted role
+- If a target role is specified, prioritize advice for that role
+- Give specific, actionable advice
 - DO NOT assume software developer unless explicitly mentioned
 
 Give:
 1. Short summary
 2. Strengths
 3. Weaknesses
-4. Skills to improve specifically for {best_role.get('role', 'role')}
+4. Skills to improve specifically for {role_context}
 """
 
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
+                {"role": "user",   "content": user_message}
             ]
         )
 
         reply = response.choices[0].message.content.strip()
-
-        return jsonify({
-            "reply": reply
-        })
+        return jsonify({"reply": reply})
 
     except Exception as e:
         print("❌ ERROR:", str(e))
-        return jsonify({
-            "error": str(e),
-            "reply": "Something went wrong"
-        }), 500
+        return jsonify({"error": str(e), "reply": "Something went wrong"}), 500
+
 
 @app.route("/health", methods=["GET"])
 def health():

@@ -18,6 +18,7 @@ const analysisSchema = new mongoose.Schema(
         {
           score: String,
           missing: [String],
+          emoji: String,
         },
         { _id: false }
       ),
@@ -25,6 +26,19 @@ const analysisSchema = new mongoose.Schema(
     resumeName: {
       type: String,
       default: "resume.pdf",
+    },
+    // ── New fields ──
+    targetRole: {
+      type: String,
+      default: null,
+    },
+    atsScore: {
+      type: Number,
+      default: null,
+    },
+    atsBreakdown: {
+      type: Object,
+      default: {},
     },
   },
   { timestamps: true }
