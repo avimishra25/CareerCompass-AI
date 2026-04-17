@@ -105,13 +105,13 @@ This separation ensures scalability and modular development.
 
 ---
 
-🏗️ Architecture & Deployment
+### 🏗️ Architecture & Deployment
 
 CareerCompass AI has evolved into a distributed multi-service architecture to ensure high availability and specialized processing:
-Frontend (Vercel): A high-performance React application optimized for global delivery.
-Core Backend (Render): A Node.js/Express orchestration layer handling authentication, history management, and service coordination.
-NLP Engine (Hugging Face Spaces): A dedicated Python/Flask microservice running spaCy and TF-IDF pipelines for heavy-duty text processing.
-Database (MongoDB Atlas): Cloud-native document storage for user profiles and analysis history.
+- Frontend (Vercel): A high-performance React application optimized for global delivery.
+- Core Backend (Render): A Node.js/Express orchestration layer handling authentication, history management, and service coordination.
+- NLP Engine (Hugging Face Spaces): A dedicated Python/Flask microservice running spaCy and TF-IDF pipelines for heavy-duty text processing.
+- Database (MongoDB Atlas): Cloud-native document storage for user profiles and analysis history.
 
 ---
 
