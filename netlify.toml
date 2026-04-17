@@ -1,0 +1,14 @@
+[build]
+  base = "ml-service"
+  command = "pip install -r requirements.txt && python -m spacy download en_core_web_sm"
+  publish = "public" # Create an empty 'public' folder if needed
+
+[functions]
+  directory = "netlify/functions"
+  # Ensures spaCy has enough memory to load
+  included_files = ["en_core_web_sm/**"] 
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/analyze/:splat"
+  status = 200
