@@ -12,6 +12,7 @@ const mongoose = require("mongoose");
 const authRoutes = require("./routes/auth");
 const protect    = require("./middleware/auth");
 const Analysis   = require("./models/Analysis");
+const ML_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 
 const app = express();
 app.use(cors());
@@ -108,7 +109,7 @@ app.post("/upload", protect, upload.single("resume"), async (req, res) => {
     });
     if (targetRole) form.append("targetRole", targetRole);
 
-    const nlpRes = await axios.post("http://localhost:8000/analyze", form, {
+    const nlpRes = await axios.post(`${ML_URL}/analyze`, form, {
       headers: form.getHeaders(),
     });
 
@@ -183,7 +184,7 @@ app.delete("/api/history/:id", protect, async (req, res) => {
 app.post("/api/agent/chat", protect, async (req, res) => {
   try {
     const response = await axios.post(
-      "http://127.0.0.1:8000/agent/gap",
+      `${ML_URL}/agent/gap`,
       req.body
     );
     res.json(response.data);
