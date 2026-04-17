@@ -1,0 +1,19 @@
+name: Sync to Hugging Face
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Push to Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # This command sends ONLY the ml-service folder to Hugging Face
+          git subtree push --prefix ml-service https://aviam25:$HF_TOKEN@huggingface.co/spaces/aviam25/careercompass-ai-ml main
