@@ -17,18 +17,14 @@ const ML_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 const app = express();
 
 app.use(cors({
-  origin: true, // This allows ANY site to talk to your backend temporarily
+  origin: [
+    'https://career-compass-ai-git-main-avimishra25s-projects.vercel.app',
+    'http://localhost:3000'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
-const corsOptions = {
-  origin: ['https://career-compass-ai-git-main-avimishra25s-projects.vercel.app', 'http://localhost:3000'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Added OPTIONS
-  allowedHeaders: ['Content-Type', 'Authorization'], // Explicitly allow these
-  credentials: true
-};
-app.use(cors(corsOptions));
-
-app.use(cors(corsOptions));
 app.use(express.json());
 
 mongoose
