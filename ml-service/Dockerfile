@@ -19,7 +19,7 @@ RUN python -m spacy download en_core_web_sm
 # Copy rest of the app
 COPY . .
 
-# HuggingFace Spaces requires port 7860
-EXPOSE 7860
+# HuggingFace Spaces requires port
+EXPOSE 8000
 
 CMD ["python", "app.py"]
