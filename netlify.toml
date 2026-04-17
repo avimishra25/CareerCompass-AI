@@ -1,14 +1,14 @@
 [build]
   base = "ml-service"
+  # This command installs dependencies and the spaCy model
   command = "pip install -r requirements.txt && python -m spacy download en_core_web_sm"
-  publish = "public" # Create an empty 'public' folder if needed
+  publish = "public"
 
 [functions]
   directory = "netlify/functions"
-  # Ensures spaCy has enough memory to load
-  included_files = ["en_core_web_sm/**"] 
+  # Ensures the spaCy model is included in the serverless function
+  included_files = ["en_core_web_sm/**"]
 
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/analyze/:splat"
-  status = 200
+[build.environment]
+  # Force a stable Python version if not set elsewhere
+  PYTHON_VERSION = "3.10.12"
