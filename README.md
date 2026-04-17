@@ -22,6 +22,9 @@ The platform goes beyond analysis — it helps users understand *what to improve
 
 ---
 
+## ▶️ Live Demo
+https://career-compass-ai-omega-smoky.vercel.app/
+
 ## ✨ Features
 
 - 🔐 JWT Authentication with bcrypt security  
