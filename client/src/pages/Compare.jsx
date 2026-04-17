@@ -29,20 +29,20 @@ function DeltaBadge({ delta }) {
   );
 }
 
-function MiniBar({ score, highlight }) {
-  return (
-    <div style={{ background: "rgba(180,190,220,0.15)", borderRadius: 999, height: 5, overflow: "hidden", marginTop: 4 }}>
-      <div style={{
-        height: "100%", borderRadius: 999,
-        width: `${score}%`,
-        background: highlight
-          ? "linear-gradient(90deg,#3b6ef8,#6c63ff)"
-          : "rgba(180,190,220,0.4)",
-        transition: "width 0.8s cubic-bezier(.4,0,.2,1)",
-      }} />
-    </div>
-  );
-}
+//function MiniBar({ score, highlight }) {
+//  return (
+//    <div style={{ background: "rgba(180,190,220,0.15)", borderRadius: 999, height: 5, overflow: "hidden", marginTop: 4 }}>
+//      <div style={{
+//        height: "100%", borderRadius: 999,
+//        width: `${score}%`,
+//        background: highlight
+//          ? "linear-gradient(90deg,#3b6ef8,#6c63ff)"
+//          : "rgba(180,190,220,0.4)",
+//        transition: "width 0.8s cubic-bezier(.4,0,.2,1)",
+//      }} />
+//  </div>
+//);
+//}
 
 function StatCard({ label, valueA, valueB, delta, unit = "" }) {
   const styleB = scoreBadgeStyle(typeof valueB === "number" ? valueB : 0);

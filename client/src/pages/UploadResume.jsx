@@ -1,6 +1,5 @@
 import React, { useState, useRef } from "react";
 import axios from "axios";
-import API_BASE_URL from '../api';
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import ATSReport from "../components/ATSReport";

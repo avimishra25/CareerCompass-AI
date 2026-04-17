@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
-import API_BASE_URL from '../api';
+
 import ProgressTracker from "../components/ProgressTracker";
 
 export default function Dashboard({ onNavigate }) {
