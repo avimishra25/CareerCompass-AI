@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import axios from "axios";
+const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import ATSReport from "../components/ATSReport";
@@ -56,7 +57,7 @@ export default function UploadResume() {
       setSkills([]); setMatchData({}); setBestRole(null);
       setAtsScore(null); setAtsBreakdown({}); setTargetRoleData(null);
 
-      const res = await axios.post("http://localhost:5000/upload", fd, {
+      const res = await axios.post(`${API}/upload`, fd, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 

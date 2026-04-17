@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-
+const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 export default function History({ onNavigate }) {
   const [history,   setHistory]   = useState([]);
@@ -12,7 +12,7 @@ export default function History({ onNavigate }) {
     (async () => {
       try {
         const token = localStorage.getItem("token");
-        const res = await axios.get("http://localhost:5000/api/history", {
+        const res = await axios.get(`${API}/api/history`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         setHistory(Array.isArray(res.data) ? res.data : []);
@@ -24,7 +24,7 @@ export default function History({ onNavigate }) {
   const deleteEntry = async (id) => {
     try {
       const token = localStorage.getItem("token");
-      await axios.delete(`http://localhost:5000/api/history/${id}`, {
+      await axios.delete(`${API}/api/history/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setHistory(p => p.filter(h => h._id !== id));

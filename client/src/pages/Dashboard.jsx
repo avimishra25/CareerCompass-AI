@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
+const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 import ProgressTracker from "../components/ProgressTracker";
 
@@ -11,7 +12,7 @@ export default function Dashboard({ onNavigate }) {
 
   useEffect(() => {
     const token = localStorage.getItem("token");
-    axios.get("http://localhost:5000/api/history", {
+    axios.get(`${API}/api/history`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     .then(({ data }) => {

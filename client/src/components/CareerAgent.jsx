@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
+const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
 // ─── Markdown-lite renderer ───────────────────────────────────
 function renderMarkdown(text) {
   if (!text) return "";
@@ -139,7 +140,7 @@ export default function CareerAgent({ skills, atsScore, atsBreakdown, bestRole, 
 
     try {
       const res = await axios.post(
-        "http://localhost:5000/api/agent/chat",
+        `${API}/api/agent/chat`,
         {
           message:      content,
           skills:       skills     || [],

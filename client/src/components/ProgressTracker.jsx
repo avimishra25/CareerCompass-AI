@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine,
@@ -42,7 +43,7 @@ export default function ProgressTracker() {
     (async () => {
       try {
         const token = localStorage.getItem("token");
-        const res = await axios.get("http://localhost:5000/api/history", {
+        const res = await axios.get(`${API}/api/history`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const analyses = Array.isArray(res.data) ? res.data : [];
