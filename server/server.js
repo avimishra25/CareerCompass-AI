@@ -18,8 +18,8 @@ const app = express();
 
 app.use(cors({
   origin: [
-    'https://career-compass-ai-git-main-avimishra25s-projects.vercel.app/'
-    'https://career-compass-m09x90z1l-avimishra25s-projects.vercel.app/'
+    'https://career-compass-ai-git-main-avimishra25s-projects.vercel.app/',
+    'https://career-compass-m09x90z1l-avimishra25s-projects.vercel.app/',
     'http://localhost:3000'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
