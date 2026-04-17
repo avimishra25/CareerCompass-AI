@@ -1,34 +1,23 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import spacy
 import os
 import re
 import uuid
-import nltk
-from nltk.stem import WordNetLemmatizer
+import json
 from pdfminer.high_level import extract_text
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from openai import OpenAI
 from dotenv import load_dotenv
 load_dotenv()
 
-# Download required nltk data on startup
-nltk.download('wordnet',               quiet=True)
-nltk.download('omw-1.4',              quiet=True)
-nltk.download('averaged_perceptron_tagger', quiet=True)
-nltk.download('punkt',                quiet=True)
-nltk.download('punkt_tab',            quiet=True)
-
-lemmatizer = WordNetLemmatizer()
-
 app = Flask(__name__)
 CORS(app)
+nlp = spacy.load("en_core_web_sm")
 
-# OpenAI is optional — stubbed out when key is missing
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-client = None
-if OPENAI_API_KEY:
-    from openai import OpenAI
-    client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 
 # ─── Expanded Skill List (200+ skills) ───────────────────────
@@ -79,72 +68,72 @@ SKILL_LIST = [
 ]
 
 ALIASES = {
-    "html5":               "html",
-    "css3":                "css",
-    "node.js":             "node",
-    "nodejs":              "node",
-    "react.js":            "react",
-    "reactjs":             "react",
-    "next.js":             "nextjs",
-    "nuxt.js":             "nuxtjs",
-    "express.js":          "express",
-    "mongodb atlas":       "mongodb",
-    "rest apis":           "rest api",
-    "restful api":         "rest api",
-    "restful apis":        "rest api",
-    "restful":             "rest api",
-    "scikit learn":        "scikit-learn",
-    "sklearn":             "scikit-learn",
-    "github":              "git",
-    "gitlab":              "git",
-    "bitbucket":           "git",
-    "java script":         "javascript",
-    "type script":         "typescript",
-    "vue.js":              "vue",
-    "angular.js":          "angular",
-    "spring":              "spring boot",
-    "postgres":            "postgresql",
-    "psql":                "postgresql",
-    "gpt":                 "openai",
-    "chatgpt":             "openai",
-    "oop":                 "object oriented programming",
-    "object-oriented":     "object oriented programming",
-    "ci cd":               "ci/cd",
-    "github actions":      "github actions",
-    "aws lambda":          "aws",
-    "amazon web services": "aws",
-    "google cloud":        "gcp",
-    "microsoft azure":     "azure",
+    "html5":              "html",
+    "css3":               "css",
+    "node.js":            "node",
+    "nodejs":             "node",
+    "react.js":           "react",
+    "reactjs":            "react",
+    "next.js":            "nextjs",
+    "nuxt.js":            "nuxtjs",
+    "express.js":         "express",
+    "mongodb atlas":      "mongodb",
+    "rest apis":          "rest api",
+    "restful api":        "rest api",
+    "restful apis":       "rest api",
+    "restful":            "rest api",
+    "scikit learn":       "scikit-learn",
+    "sklearn":            "scikit-learn",
+    "github":             "git",
+    "gitlab":             "git",
+    "bitbucket":          "git",
+    "java script":        "javascript",
+    "type script":        "typescript",
+    "vue.js":             "vue",
+    "angular.js":         "angular",
+    "spring":             "spring boot",
+    "postgres":           "postgresql",
+    "psql":               "postgresql",
+    "gpt":                "openai",
+    "chatgpt":            "openai",
+    "oop":                "object oriented programming",
+    "object-oriented":    "object oriented programming",
+    "ci cd":              "ci/cd",
+    "github actions":     "github actions",
+    "aws lambda":         "aws",
+    "amazon web services":"aws",
+    "google cloud":       "gcp",
+    "microsoft azure":    "azure",
 }
 
 # ─── Role definitions (skills required per role) ─────────────
 ROLE_DEFINITIONS = {
-    "fullstack developer":    {"emoji": "💻", "skills": ["react","node","express","mongodb","javascript","html","css","rest api","git"]},
-    "frontend developer":     {"emoji": "🎨", "skills": ["react","html","css","javascript","typescript","tailwind","redux","figma","vue","angular"]},
-    "backend developer":      {"emoji": "⚙️",  "skills": ["node","express","python","django","flask","postgresql","mongodb","redis","docker","rest api"]},
-    "data scientist":         {"emoji": "📊", "skills": ["python","pandas","numpy","scikit-learn","tensorflow","pytorch","matplotlib","sql","machine learning","r"]},
-    "devops engineer":        {"emoji": "🛠️",  "skills": ["docker","kubernetes","aws","linux","git","terraform","ansible","jenkins","github actions","nginx"]},
-    "ml engineer":            {"emoji": "🤖", "skills": ["python","tensorflow","pytorch","scikit-learn","pandas","numpy","mlflow","docker","aws","deep learning"]},
-    "mobile developer":       {"emoji": "📱", "skills": ["react native","flutter","android","ios","kotlin","swift","firebase","redux","expo"]},
-    "cloud architect":        {"emoji": "☁️",  "skills": ["aws","azure","gcp","terraform","kubernetes","docker","microservices","linux","networking","ci/cd"]},
-    "cybersecurity analyst":  {"emoji": "🔐", "skills": ["networking","ethical hacking","firewalls","siem","cryptography","penetration testing","owasp","linux","cybersecurity"]},
-    "ui/ux designer":         {"emoji": "✏️",  "skills": ["figma","adobe xd","sketch","wireframing","prototyping","user research","ui design","ux design","css","html"]},
-    "database administrator": {"emoji": "🗄️",  "skills": ["postgresql","mysql","mongodb","redis","elasticsearch","sql","performance tuning","backup","replication"]},
-    "blockchain developer":   {"emoji": "🔗", "skills": ["solidity","ethereum","web3","smart contracts","rust","go","cryptography","node","react"]},
+    "fullstack developer":   {"emoji": "💻", "skills": ["react","node","express","mongodb","javascript","html","css","rest api","git"]},
+    "frontend developer":    {"emoji": "🎨", "skills": ["react","html","css","javascript","typescript","tailwind","redux","figma","vue","angular"]},
+    "backend developer":     {"emoji": "⚙️",  "skills": ["node","express","python","django","flask","postgresql","mongodb","redis","docker","rest api"]},
+    "data scientist":        {"emoji": "📊", "skills": ["python","pandas","numpy","scikit-learn","tensorflow","pytorch","matplotlib","sql","machine learning","r"]},
+    "devops engineer":       {"emoji": "🛠️",  "skills": ["docker","kubernetes","aws","linux","git","terraform","ansible","jenkins","github actions","nginx"]},
+    "ml engineer":           {"emoji": "🤖", "skills": ["python","tensorflow","pytorch","scikit-learn","pandas","numpy","mlflow","docker","aws","deep learning"]},
+    "mobile developer":      {"emoji": "📱", "skills": ["react native","flutter","android","ios","kotlin","swift","firebase","redux","expo"]},
+    "cloud architect":       {"emoji": "☁️",  "skills": ["aws","azure","gcp","terraform","kubernetes","docker","microservices","linux","networking","ci/cd"]},
+    "cybersecurity analyst": {"emoji": "🔐", "skills": ["networking","ethical hacking","firewalls","siem","cryptography","penetration testing","owasp","linux","cybersecurity"]},
+    "ui/ux designer":        {"emoji": "✏️",  "skills": ["figma","adobe xd","sketch","wireframing","prototyping","user research","ui design","ux design","css","html"]},
+    "database administrator":{"emoji": "🗄️",  "skills": ["postgresql","mysql","mongodb","redis","elasticsearch","sql","performance tuning","backup","replication"]},
+    "blockchain developer":  {"emoji": "🔗", "skills": ["solidity","ethereum","web3","smart contracts","rust","go","cryptography","node","react"]},
 }
 
 # ─── ATS scoring weights ──────────────────────────────────────
-ATS_SECTIONS   = ["education", "experience", "skills", "projects", "summary",
-                  "contact", "certifications", "achievements", "work experience",
-                  "professional experience", "technical skills", "objective"]
-ACTION_VERBS   = ["developed","built","led","designed","implemented","improved",
-                  "created","managed","deployed","optimized","architected","launched",
-                  "reduced","increased","delivered","collaborated","mentored",
-                  "automated","integrated","migrated","scaled","refactored",
-                  "engineered","established","pioneered","streamlined"]
-QUANT_PATTERNS = [r'\d+%', r'\d+x', r'\$\d+', r'\d+\s*years?',
-                  r'\d+\s*months?', r'\d+\s*users?', r'\d+\s*team',
-                  r'\d+\s*million', r'\d+\s*thousand', r'\d+k\b']
+ATS_SECTIONS    = ["education", "experience", "skills", "projects", "summary",
+                   "contact", "certifications", "achievements", "work experience",
+                   "professional experience", "technical skills", "objective"]
+ACTION_VERBS    = ["developed","built","led","designed","implemented","improved",
+                   "created","managed","deployed","optimized","architected","launched",
+                   "reduced","increased","delivered","collaborated","mentored",
+                   "automated","integrated","migrated","scaled","refactored",
+                   "engineered","established","pioneered","streamlined"]
+QUANT_PATTERNS  = [r'\d+%', r'\d+x', r'\$\d+', r'\d+\s*years?',
+                   r'\d+\s*months?', r'\d+\s*users?', r'\d+\s*team',
+                   r'\d+\s*million', r'\d+\s*thousand', r'\d+k\b']
 
 
 def normalize(text):
@@ -154,32 +143,26 @@ def normalize(text):
     return t
 
 
-def lemmatize_text(text):
-    """Lemmatize text using nltk WordNetLemmatizer (replaces spacy lemmatization)."""
-    tokens = nltk.word_tokenize(text[:50000])
-    lemmas = [lemmatizer.lemmatize(token.lower()) for token in tokens
-              if token.isalpha() and len(token) > 1]
-    return " ".join(lemmas)
-
-
 def extract_skills(raw_text):
     normalized = normalize(raw_text)
     detected = set()
 
-    # Pass 1: regex word-boundary match (same as before)
+    # Pass 1: regex word-boundary match
     for skill in SKILL_LIST:
         pattern = r'(?<![a-z0-9\-])' + re.escape(skill) + r'(?![a-z0-9\-])'
         if re.search(pattern, normalized):
             detected.add(skill)
 
-    # Pass 2: nltk lemmatization fallback (replaces spacy)
-    lemmatized = lemmatize_text(normalized)
+    # Pass 2: spaCy lemmatization fallback
+    doc = nlp(normalized[:50000])
+    lemmas = " ".join([t.lemma_ for t in doc if not t.is_punct and len(t.text) > 1])
+    noun_chunks = " ".join([c.text for c in doc.noun_chunks])
+    combined = lemmas + " " + noun_chunks
 
     for skill in SKILL_LIST:
         if skill not in detected:
-            # Lemmatize the skill name itself for comparison
-            skill_lemma = " ".join([lemmatizer.lemmatize(w) for w in skill.split()])
-            if skill_lemma in lemmatized:
+            skill_lemma = " ".join([t.lemma_ for t in nlp(skill)])
+            if skill_lemma in combined:
                 detected.add(skill)
 
     return list(detected)
@@ -202,8 +185,13 @@ def rank_skills_tfidf(raw_text, detected_skills):
 
 
 def match_roles(detected_skills, target_role=None):
+    """
+    Match detected skills against all role definitions.
+    If target_role is provided, it gets a dedicated top-level highlight.
+    Returns match dict and bestRole.
+    """
     skill_set = set(detected_skills)
-    results   = {}
+    results = {}
 
     for role, info in ROLE_DEFINITIONS.items():
         required = info["skills"]
@@ -217,10 +205,13 @@ def match_roles(detected_skills, target_role=None):
             "emoji":   info["emoji"],
         }
 
-    sorted_roles  = sorted(results.items(), key=lambda x: -x[1]["score"])
-    best_role     = sorted_roles[0] if sorted_roles else None
+    # Sort by score
+    sorted_roles = sorted(results.items(), key=lambda x: -x[1]["score"])
+    best_role    = sorted_roles[0] if sorted_roles else None
+
     best_role_obj = {"role": best_role[0], "score": best_role[1]["score"]} if best_role else None
 
+    # If target role specified, bump it to bestRole if it exists
     target_role_data = None
     if target_role and target_role.lower() in results:
         target_role_data = {
@@ -232,32 +223,45 @@ def match_roles(detected_skills, target_role=None):
 
 
 def compute_ats_score(raw_text, detected_skills):
+    """
+    ATS Score breakdown (total 100):
+      Skills coverage    → 30 pts
+      Action verbs       → 20 pts
+      Quantified results → 20 pts
+      Sections present   → 20 pts
+      Length & density   → 10 pts
+    """
     text_lower = raw_text.lower()
     words      = raw_text.split()
     word_count = len(words)
 
-    skill_score   = min(30, len(detected_skills) * 1.5)
-    found_verbs   = [v for v in ACTION_VERBS if v in text_lower]
-    verb_score    = min(20, len(set(found_verbs)) * 2)
-    quant_hits    = sum(1 for p in QUANT_PATTERNS if re.search(p, text_lower))
-    quant_score   = min(20, quant_hits * 4)
-    section_hits  = sum(1 for s in ATS_SECTIONS if re.search(r'\b' + re.escape(s) + r'\b', text_lower))
+    skill_score  = min(30, len(detected_skills) * 1.5)
+    found_verbs  = [v for v in ACTION_VERBS if v in text_lower]
+    verb_score   = min(20, len(set(found_verbs)) * 2)
+    quant_hits   = sum(1 for p in QUANT_PATTERNS if re.search(p, text_lower))
+    quant_score  = min(20, quant_hits * 4)
+    section_hits = sum(1 for s in ATS_SECTIONS if re.search(r'\b' + re.escape(s) + r'\b', text_lower))
     section_score = min(20, section_hits * 2)
 
-    if   300 <= word_count <= 700:   length_score = 10
-    elif 700 < word_count  <= 1200:  length_score = 7
-    elif 150 <= word_count < 300:    length_score = 5
-    else:                            length_score = 2
+    if 300 <= word_count <= 700:
+        length_score = 10
+    elif 700 < word_count <= 1200:
+        length_score = 7
+    elif 150 <= word_count < 300:
+        length_score = 5
+    else:
+        length_score = 2
 
-    total = min(100, max(0, int(skill_score + verb_score + quant_score + section_score + length_score)))
+    total = int(skill_score + verb_score + quant_score + section_score + length_score)
+    total = min(100, max(0, total))
 
     breakdown = {
-        "skills":     {"score": int(skill_score),  "max": 30, "label": "Skill coverage"},
-        "verbs":      {"score": int(verb_score),    "max": 20, "label": "Action verbs",
+        "skills":     {"score": int(skill_score),    "max": 30, "label": "Skill coverage"},
+        "verbs":      {"score": int(verb_score),      "max": 20, "label": "Action verbs",
                        "found": list(set(found_verbs))[:8]},
-        "quantified": {"score": int(quant_score),   "max": 20, "label": "Quantified results"},
-        "sections":   {"score": int(section_score), "max": 20, "label": "Resume sections"},
-        "length":     {"score": int(length_score),  "max": 10, "label": "Length & density",
+        "quantified": {"score": int(quant_score),     "max": 20, "label": "Quantified results"},
+        "sections":   {"score": int(section_score),   "max": 20, "label": "Resume sections"},
+        "length":     {"score": int(length_score),    "max": 10, "label": "Length & density",
                        "words": word_count},
     }
 
@@ -266,16 +270,13 @@ def compute_ats_score(raw_text, detected_skills):
 
 # ─── Routes ───────────────────────────────────────────────────
 
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({"status": "ok", "openai": bool(client)})
-
-
 @app.route("/analyze", methods=["POST"])
 def analyze():
     file        = request.files["resume"]
+    # ── NEW: read targetRole from form data ──
     target_role = request.form.get("targetRole", None)
-    file_path   = f"temp_{uuid.uuid4().hex}.pdf"
+
+    file_path = f"temp_{uuid.uuid4().hex}.pdf"
     file.save(file_path)
 
     try:
@@ -286,6 +287,8 @@ def analyze():
         detected  = extract_skills(raw_text)
         ranked    = rank_skills_tfidf(raw_text, detected)
         ats_total, ats_breakdown = compute_ats_score(raw_text, ranked)
+
+        # ── NEW: use role matching function ──
         match_results, best_role_obj, target_role_data = match_roles(ranked, target_role)
 
         response_data = {
@@ -298,6 +301,7 @@ def analyze():
             "raw_text":      raw_text[:8000],
         }
 
+        # ── NEW: include target role analysis if provided ──
         if target_role_data:
             response_data["targetRoleAnalysis"] = {
                 "role":    target_role_data["role"],
@@ -317,22 +321,24 @@ def analyze():
 def agent_gap():
     try:
         if not client:
-            # Graceful stub when OpenAI key is not configured
-            return jsonify({
-                "reply": "AI career guidance is coming soon. Your resume has been analyzed successfully — check the ATS score and skill breakdown above for detailed feedback."
-            })
+            return jsonify({"error": "OpenAI API key not configured"}), 500
 
-        data          = request.json or {}
+        data = request.json or {}
+
         user_skills   = data.get("skills", [])
         best_role     = data.get("bestRole", {})
+        match_data    = data.get("match", {})
         ats_score     = data.get("atsScore", 0)
+        ats_breakdown = data.get("atsBreakdown", {})
         user_message  = data.get("message", "Analyze my resume")
+        history       = data.get("history", [])
+        # ── NEW: target role context for chatbot ──
         target_role   = data.get("targetRole", None)
 
         if isinstance(best_role, str):
             best_role = {"role": best_role, "score": 0}
 
-        role_context  = target_role if target_role else best_role.get('role', 'unknown')
+        role_context = target_role if target_role else best_role.get('role', 'unknown')
 
         system_prompt = f"""
 You are a career advisor AI.
@@ -362,13 +368,18 @@ Give:
             ]
         )
 
-        return jsonify({"reply": response.choices[0].message.content.strip()})
+        reply = response.choices[0].message.content.strip()
+        return jsonify({"reply": reply})
 
     except Exception as e:
-        print("ERROR:", str(e))
+        print("❌ ERROR:", str(e))
         return jsonify({"error": str(e), "reply": "Something went wrong"}), 500
 
 
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok", "openai": bool(client)})
+
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    app.run(port=8000, debug=True)
