@@ -11,4 +11,4 @@
 
 [build.environment]
   # Force a stable Python version if not set elsewhere
-  PYTHON_VERSION = "3.10.12"
+  PYTHON_VERSION = "3.11.4"
