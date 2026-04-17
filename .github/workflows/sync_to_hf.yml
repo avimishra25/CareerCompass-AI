@@ -15,5 +15,4 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          # Only pushing the 'ml-service' folder to keep things clean
-          git subtree push --prefix ml-service https://aviam25:$HF_TOKEN@huggingface.co/spaces/aviam25/careercompass-ai-ml main
+          git push -f https://aviam25:$HF_TOKEN@huggingface.co/spaces/aviam25/careercompass-ai-ml main
