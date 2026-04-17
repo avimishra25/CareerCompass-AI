@@ -15,9 +15,17 @@ const Analysis   = require("./models/Analysis");
 const ML_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 
 const app = express();
-app.use(cors({
-  origin: ["https://career-compass-1tet5os6d-avimishra25s-projects.vercel.app/", "http://localhost:3000"]
-}));
+const corsOptions = {
+  origin: [
+    'https://career-compass-ai-git-main-avimishra25s-projects.vercel.app', 
+    'http://localhost:3000'
+  ],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 mongoose
