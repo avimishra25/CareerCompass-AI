@@ -15,6 +15,11 @@ const Analysis   = require("./models/Analysis");
 const ML_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 
 const app = express();
+
+app.use(cors({
+  origin: true, // This allows ANY site to talk to your backend temporarily
+  credentials: true
+}));
 const corsOptions = {
   origin: ['https://career-compass-ai-git-main-avimishra25s-projects.vercel.app', 'http://localhost:3000'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Added OPTIONS
