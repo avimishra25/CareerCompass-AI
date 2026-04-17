@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, ReferenceLine,
 } from "recharts";
+
+const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 // ── Custom tooltip ────────────────────────────────────────────
 function CustomTooltip({ active, payload, label }) {

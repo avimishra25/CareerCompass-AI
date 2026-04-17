@@ -1,10 +1,11 @@
 import React, { useState, useRef } from "react";
 import axios from "axios";
-const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import ATSReport from "../components/ATSReport";
 import CareerAgent from "../components/CareerAgent";
+
+const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 // ── Target role options (must match ROLE_DEFINITIONS keys in app.py) ──
 const TARGET_ROLES = [

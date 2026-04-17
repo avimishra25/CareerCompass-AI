@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
-const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
-
 import ProgressTracker from "../components/ProgressTracker";
+
+const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 export default function Dashboard({ onNavigate }) {
   const { user } = useAuth();
