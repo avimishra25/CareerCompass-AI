@@ -340,14 +340,6 @@ python app.py
 
 ---
 
-## 🎥 Demo
-
-Coming soon...
-
-> Upload resume → Get ATS score → Improve with AI → Chat for guidance
-
----
-
 ## 📈 Future Scope
 
 - Advanced analytics dashboard
