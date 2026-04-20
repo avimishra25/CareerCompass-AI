@@ -38,7 +38,7 @@ export default function Hero({ onAnalyze, onHowItWorks }) {
 
         {/* Trust strip */}
         <div className="flex flex-wrap justify-center gap-3 mt-14 fade-up-4">
-          {["⚡ Instant results","🎯 Role matching","🔐 JWT secured","📊 Skill gap report"].map((t,i) => (
+          {["⚡ Instant results","🎯 12 role matching","📊 ML ATS scoring","💬 AI chatbot"].map((t,i) => (
             <span key={i} className="glass text-xs px-4 py-2 rounded-full font-medium"
               style={{ color:"var(--text-2)", fontFamily:'Plus Jakarta Sans,sans-serif' }}>{t}</span>
           ))}

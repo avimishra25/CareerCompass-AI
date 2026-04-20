@@ -1,9 +1,9 @@
 import React from "react";
 const stats = [
-  { value:"3",    label:"Service Architecture", sub:"React · Node · Python",   icon:"🏗️" },
-  { value:"100+", label:"Skills Detected",       sub:"Across all domains",       icon:"🧠" },
-  { value:"JWT",  label:"Secured Auth",          sub:"Bcrypt + MongoDB",         icon:"🔐" },
-  { value:"3+",   label:"Career Roles",          sub:"& expanding",              icon:"🎯" },
+  { value:"3",    label:"Service Architecture", sub:"React · Node · Python",     icon:"🏗️" },
+  { value:"200+", label:"Skills Detected",       sub:"Across all domains",         icon:"🧠" },
+  { value:"12",   label:"Career Roles",          sub:"With skill gap analysis",    icon:"🎯" },
+  { value:"ML",   label:"ATS Scoring",           sub:"GradientBoosting model",     icon:"📊" },
 ];
 export default function Stats() {
   return (

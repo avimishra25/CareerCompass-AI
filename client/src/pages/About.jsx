@@ -3,13 +3,13 @@ import React from "react";
 const timeline = [
   { step:"01", title:"Upload Resume",  desc:"Drop your PDF — drag & drop supported." },
   { step:"02", title:"NLP Extraction", desc:"Python spaCy pipeline extracts every relevant skill." },
-  { step:"03", title:"Role Matching",  desc:"Scored against Frontend, Backend and Data Science roles." },
-  { step:"04", title:"Get Report",     desc:"Best match, compatibility scores, missing skills — all in one view." },
+  { step:"03", title:"Role Matching",  desc:"Scored against 12 career roles with skill gap analysis and target role benchmarking." },
+  { step:"04", title:"Get Report",     desc:"ATS score, ML-powered insights, PDF export, and AI chatbot guidance — all in one view." },
 ];
 const techStack = [
-  { layer:"Frontend", items:["React.js","Tailwind CSS","Axios"],         color:"#3b6ef8" },
-  { layer:"Backend",  items:["Node.js","Express.js","JWT Auth"],         color:"#6c63ff" },
-  { layer:"AI / NLP", items:["Python","Flask","spaCy","pdfminer"],       color:"#0ea5c9" },
+  { layer:"Frontend", items:["React.js","Tailwind CSS","Axios","jsPDF","html2canvas"],         color:"#3b6ef8" },
+  { layer:"Backend",  items:["Node.js","Express.js","bcryptjs","JWT Auth","Multer","Nodemailer",],         color:"#6c63ff" },
+  { layer:"AI / NLP", items:["Python","Flask","spaCy","pdfminer","TF-IDF","scikit-learn","OpenAI API"],       color:"#0ea5c9" },
   { layer:"Database", items:["MongoDB Atlas","Mongoose"],                 color:"#10b981" },
 ];
 
