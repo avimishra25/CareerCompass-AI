@@ -10,6 +10,7 @@ import Compare from "./pages/Compare";
 import AuthPage from "./pages/AuthPage";
 import About from "./pages/About";
 import Dashboard from "./pages/Dashboard";
+import Profile from "./pages/Profile";          // ← ADD THIS
 
 function AppInner() {
   const { user, loading } = useAuth();
@@ -17,7 +18,6 @@ function AppInner() {
   const [compareData,  setCompareData]  = useState({ analysisA: null, analysisB: null });
   const uploadRef = useRef(null);
 
-  // Updated navigate — accepts optional data payload for Compare
   const navigate = (page, data = {}) => {
     if (page === "compare" && data.analysisA && data.analysisB) {
       setCompareData({ analysisA: data.analysisA, analysisB: data.analysisB });
@@ -26,7 +26,6 @@ function AppInner() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Scroll to top immediately when user logs in
   useEffect(() => {
     if (user) {
       window.scrollTo({ top: 0, behavior: "instant" });
@@ -34,7 +33,6 @@ function AppInner() {
     }
   }, [user]);
 
-  // Show nothing while checking token
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -49,12 +47,9 @@ function AppInner() {
     );
   }
 
-  // ── Not logged in → Auth page first, landing below ────────
   if (!user) {
     return (
       <div className="min-h-screen" style={{ position: "relative" }}>
-
-        {/* Minimal public navbar */}
         <nav className="sticky top-0 z-50 px-6 py-3.5"
           style={{
             background: "rgba(240,242,247,0.8)",
@@ -111,7 +106,6 @@ function AppInner() {
     );
   }
 
-  // ── Logged in ─────────────────────────────────────────────
   return (
     <div className="min-h-screen" style={{ position: "relative" }}>
       <Navbar onNavigate={navigate} currentPage={currentPage} />
@@ -151,6 +145,8 @@ function AppInner() {
       }
 
       {currentPage === "about" && <About />}
+
+      {currentPage === "profile" && <Profile />}    {/* ← ADD THIS */}
     </div>
   );
 }

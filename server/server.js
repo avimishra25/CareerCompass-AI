@@ -12,20 +12,20 @@ const mongoose = require("mongoose");
 const authRoutes = require("./routes/auth");
 const protect    = require("./middleware/auth");
 const Analysis   = require("./models/Analysis");
-const ML_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 
-const app = express();
+const ML_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
+const app    = express();
 
 app.use(cors({
   origin: [
-    'https://career-compass-ai-omega-smoky.vercel.app',
-    'https://career-compass-ai-git-main-avimishra25s-projects.vercel.app',
-    'https://career-compass-5tm4sgjrd-avimishra25s-projects.vercel.app',
-    'http://localhost:3000'
+    "https://career-compass-ai-omega-smoky.vercel.app",
+    "https://career-compass-ai-git-main-avimishra25s-projects.vercel.app",
+    "https://career-compass-5tm4sgjrd-avimishra25s-projects.vercel.app",
+    "http://localhost:3000",
   ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  methods:      ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials:  true,
 }));
 app.use(express.json());
 
@@ -35,55 +35,22 @@ mongoose
   .catch((err) => console.error("❌ MongoDB error:", err.message));
 
 // ─── Job Roles ────────────────────────────────────────────────
+// Kept here so the Node layer can validate targetRole before
+// forwarding to the ML service (avoids unnecessary ML calls for
+// invalid roles).
 const JOB_ROLES = {
-  "frontend developer": {
-    skills: ["html", "css", "javascript", "react", "typescript", "tailwind", "redux", "nextjs"],
-    emoji: "🎨",
-  },
-  "backend developer": {
-    skills: ["node", "express", "mongodb", "sql", "python", "rest api", "docker", "postgresql"],
-    emoji: "⚙️",
-  },
-  "fullstack developer": {
-    skills: ["html", "css", "javascript", "react", "node", "express", "mongodb", "sql", "git"],
-    emoji: "💻",
-  },
-  "data scientist": {
-    skills: ["python", "pandas", "numpy", "machine learning", "tensorflow", "sql", "matplotlib", "scikit-learn"],
-    emoji: "📊",
-  },
-  "ml engineer": {
-    skills: ["python", "tensorflow", "pytorch", "machine learning", "deep learning", "numpy", "docker", "mlops"],
-    emoji: "🤖",
-  },
-  "devops engineer": {
-    skills: ["docker", "kubernetes", "aws", "linux", "git", "ci/cd", "terraform", "ansible"],
-    emoji: "🔧",
-  },
-  "cloud engineer": {
-    skills: ["aws", "azure", "gcp", "docker", "kubernetes", "terraform", "linux", "networking"],
-    emoji: "☁️",
-  },
-  "mobile developer": {
-    skills: ["react native", "flutter", "android", "ios", "kotlin", "swift", "firebase"],
-    emoji: "📱",
-  },
-  "ui/ux designer": {
-    skills: ["figma", "css", "html", "wireframing", "prototyping", "user research", "adobe xd"],
-    emoji: "✏️",
-  },
-  "cybersecurity analyst": {
-    skills: ["networking", "linux", "python", "ethical hacking", "firewalls", "cryptography", "siem"],
-    emoji: "🔐",
-  },
-  "data engineer": {
-    skills: ["python", "sql", "apache spark", "kafka", "airflow", "aws", "postgresql", "dbt"],
-    emoji: "🗄️",
-  },
-  "ai engineer": {
-    skills: ["python", "openai", "langchain", "llm", "rag", "vector database", "fastapi", "docker"],
-    emoji: "🧠",
-  },
+  "frontend developer":    { skills: ["html","css","javascript","react","typescript","tailwind","redux","nextjs"],            emoji: "🎨" },
+  "backend developer":     { skills: ["node","express","mongodb","sql","python","rest api","docker","postgresql"],            emoji: "⚙️"  },
+  "fullstack developer":   { skills: ["html","css","javascript","react","node","express","mongodb","sql","git"],              emoji: "💻" },
+  "data scientist":        { skills: ["python","pandas","numpy","machine learning","tensorflow","sql","matplotlib","scikit-learn"], emoji: "📊" },
+  "ml engineer":           { skills: ["python","tensorflow","pytorch","machine learning","deep learning","numpy","docker","mlops"], emoji: "🤖" },
+  "devops engineer":       { skills: ["docker","kubernetes","aws","linux","git","ci/cd","terraform","ansible"],               emoji: "🔧" },
+  "cloud engineer":        { skills: ["aws","azure","gcp","docker","kubernetes","terraform","linux","networking"],            emoji: "☁️"  },
+  "mobile developer":      { skills: ["react native","flutter","android","ios","kotlin","swift","firebase"],                  emoji: "📱" },
+  "ui/ux designer":        { skills: ["figma","css","html","wireframing","prototyping","user research","adobe xd"],           emoji: "✏️"  },
+  "cybersecurity analyst": { skills: ["networking","linux","python","ethical hacking","firewalls","cryptography","siem"],     emoji: "🔐" },
+  "data engineer":         { skills: ["python","sql","apache spark","kafka","airflow","aws","postgresql","dbt"],              emoji: "🗄️"  },
+  "ai engineer":           { skills: ["python","openai","langchain","llm","rag","vector database","fastapi","docker"],        emoji: "🧠" },
 };
 
 // ─── Multer (disk storage) ────────────────────────────────────
@@ -101,10 +68,8 @@ app.use("/api/auth", authRoutes);
 app.get("/", (req, res) => res.send("CareerCompass backend running 🚀"));
 
 // ─── Upload & Analyze ─────────────────────────────────────────
-// FIX 1: was `authMiddleware` — correct name is `protect`
-// FIX 2: was `file.buffer` (memory) — now reads from disk since diskStorage is used
 app.post("/upload", protect, upload.single("resume"), async (req, res) => {
-  const filePath = req.file?.path;  // save path early for cleanup in finally
+  const filePath = req.file?.path;
 
   try {
     const file       = req.file;
@@ -112,7 +77,7 @@ app.post("/upload", protect, upload.single("resume"), async (req, res) => {
 
     if (!file) return res.status(400).json({ error: "No file uploaded" });
 
-    // Forward to Python NLP service — read file from disk
+    // Forward resume PDF + targetRole to the Python ML service
     const form = new FormData();
     form.append("resume", fs.createReadStream(filePath), {
       filename:    file.originalname,
@@ -131,9 +96,10 @@ app.post("/upload", protect, upload.single("resume"), async (req, res) => {
       ats_score          = null,
       ats_breakdown      = {},
       targetRoleAnalysis = null,
+      ml_insights        = null,   // ← new: ML feature importances from Python
     } = nlpRes.data;
 
-    // Save to MongoDB
+    // Save to MongoDB — ml_insights stored for history view
     const analysis = await Analysis.create({
       user:         req.user.id,
       skills,
@@ -143,6 +109,7 @@ app.post("/upload", protect, upload.single("resume"), async (req, res) => {
       targetRole,
       atsScore:     ats_score,
       atsBreakdown: ats_breakdown,
+      mlInsights:   ml_insights,  // ← store new ML data
     });
 
     return res.json({
@@ -152,14 +119,16 @@ app.post("/upload", protect, upload.single("resume"), async (req, res) => {
       atsScore:           ats_score,
       atsBreakdown:       ats_breakdown,
       targetRoleAnalysis,
+      mlInsights:         ml_insights,  // ← pass to frontend
       analysisId:         analysis._id,
     });
 
   } catch (err) {
     console.error("Upload error:", err.message);
     res.status(500).json({ error: "Analysis failed", details: err.message });
+
   } finally {
-    // Always clean up the temp file from disk
+    // Always clean up the temp file
     if (filePath && fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
@@ -192,16 +161,44 @@ app.delete("/api/history/:id", protect, async (req, res) => {
 });
 
 // ─── AI Agent proxy ───────────────────────────────────────────
+// CHANGE: now also forwards mlInsights from the request body
+// so the Python chatbot can include ML-identified improvement
+// tips in its system prompt (the history fix lives in app.py).
 app.post("/api/agent/chat", protect, async (req, res) => {
   try {
-    const response = await axios.post(
-      `${ML_URL}/agent/gap`,
-      req.body
-    );
+    // req.body already contains: skills, bestRole, atsScore,
+    // atsBreakdown, message, history, targetRole, mlInsights
+    // — all forwarded as-is to the ML service.
+    const response = await axios.post(`${ML_URL}/agent/gap`, req.body);
     res.json(response.data);
   } catch (error) {
     const msg = error.response?.data?.error || "Agent unavailable";
     res.status(500).json({ reply: msg, error: msg });
+  }
+});
+
+// ─── Retrain endpoint (admin / dev use) ───────────────────────
+// Calls the /retrain route on the Python ML service to
+// regenerate and re-save the ATS scoring model.
+// Useful after you update the training data or feature logic.
+// Usage: POST /api/retrain  (requires auth)
+app.post("/api/retrain", protect, async (req, res) => {
+  try {
+    const response = await axios.post(`${ML_URL}/retrain`);
+    res.json(response.data);
+  } catch (error) {
+    const msg = error.response?.data?.message || "Retrain failed";
+    res.status(500).json({ error: msg });
+  }
+});
+
+// ─── ML health check ─────────────────────────────────────────
+app.get("/api/ml/health", protect, async (req, res) => {
+  try {
+    const response = await axios.get(`${ML_URL}/health`);
+    res.json(response.data);
+  } catch (error) {
+    res.status(503).json({ status: "ML service unreachable" });
   }
 });
 

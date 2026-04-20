@@ -93,65 +93,123 @@ function BreakdownRow({ label, score, max, detail }) {
   );
 }
 
-// ─── Tip cards ────────────────────────────────────────────────
-function getTips(breakdown, score) {
+// ─── Fallback tips (used when mlInsights not available) ───────
+function getFallbackTips(breakdown, score) {
   const tips = [];
-
-  if ((breakdown?.verbs?.score || 0) < 12) {
-    tips.push({
-      icon: "✍️",
-      title: "Add action verbs",
-      desc: "Start bullet points with: Developed, Built, Optimised, Led, Delivered, Reduced…",
-    });
-  }
-  if ((breakdown?.quantified?.score || 0) < 12) {
-    tips.push({
-      icon: "📊",
-      title: "Quantify achievements",
-      desc: 'Add numbers: "Reduced load time by 40%", "Managed team of 5", "Served 10k+ users"',
-    });
-  }
-  if ((breakdown?.sections?.score || 0) < 12) {
-    tips.push({
-      icon: "📋",
-      title: "Add missing sections",
-      desc: "Include: Summary, Experience, Education, Skills, Projects, Certifications",
-    });
-  }
-  if ((breakdown?.skills?.score || 0) < 18) {
-    tips.push({
-      icon: "🧠",
-      title: "List more skills",
-      desc: "Add a dedicated Technical Skills section with all tools, languages, and frameworks you know",
-    });
-  }
-  if ((breakdown?.length?.words || 0) < 300) {
-    tips.push({
-      icon: "📝",
-      title: "Expand your resume",
-      desc: "Your resume is too short. ATS prefers 400–700 words. Add project descriptions and responsibilities.",
-    });
-  }
-  if (score >= 75) {
-    tips.push({
-      icon: "🎉",
-      title: "Great ATS score!",
-      desc: "Your resume is well-optimised. Focus on tailoring keywords for each specific job description.",
-    });
-  }
-
+  if ((breakdown?.verbs?.score || 0) < 12)
+    tips.push({ icon: "✍️", title: "Add action verbs", desc: "Start bullet points with: Developed, Built, Optimised, Led, Delivered, Reduced…" });
+  if ((breakdown?.quantified?.score || 0) < 12)
+    tips.push({ icon: "📊", title: "Quantify achievements", desc: 'Add numbers: "Reduced load time by 40%", "Managed team of 5", "Served 10k+ users"' });
+  if ((breakdown?.sections?.score || 0) < 12)
+    tips.push({ icon: "📋", title: "Add missing sections", desc: "Include: Summary, Experience, Education, Skills, Projects, Certifications" });
+  if ((breakdown?.skills?.score || 0) < 18)
+    tips.push({ icon: "🧠", title: "List more skills", desc: "Add a dedicated Technical Skills section with all tools, languages, and frameworks you know" });
+  if ((breakdown?.length?.words || 0) < 300)
+    tips.push({ icon: "📝", title: "Expand your resume", desc: "Your resume is too short. ATS prefers 400–700 words. Add project descriptions and responsibilities." });
+  if (score >= 75)
+    tips.push({ icon: "🎉", title: "Great ATS score!", desc: "Your resume is well-optimised. Focus on tailoring keywords for each specific job description." });
   return tips.slice(0, 3);
 }
 
+// ─── ML Insights: top drivers bar chart ───────────────────────
+function DriverBar({ label, importance, yourValue }) {
+  // importance is already a 0–100 percentage from the model
+  const pct = Math.min(100, importance);
+  const col = pct >= 30 ? "#10b981" : pct >= 15 ? "#3b6ef8" : "#f59e0b";
+
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+        <span style={{
+          fontSize: "0.75rem", fontWeight: 500,
+          color: "var(--text-2)", fontFamily: "Plus Jakarta Sans, sans-serif",
+        }}>{label}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{
+            fontSize: "0.68rem", color: "var(--text-3)",
+            fontFamily: "Plus Jakarta Sans, sans-serif",
+          }}>score: <strong style={{ color: "var(--text)" }}>{yourValue}</strong></span>
+          <span style={{
+            fontSize: "0.72rem", fontWeight: 700,
+            color: col, fontFamily: "Plus Jakarta Sans, sans-serif",
+            minWidth: 36, textAlign: "right",
+          }}>{pct}%</span>
+        </div>
+      </div>
+      <div style={{
+        background: "rgba(180,190,220,0.15)", borderRadius: 999,
+        height: 7, overflow: "hidden",
+      }}>
+        <div style={{
+          height: "100%", borderRadius: 999,
+          background: `linear-gradient(90deg, ${col}, #6c63ff)`,
+          width: `${pct}%`,
+          transition: "width 1s cubic-bezier(.4,0,.2,1)",
+        }} />
+      </div>
+    </div>
+  );
+}
+
+// ─── ML Insights section (top drivers only) ──────────────────
+function MLInsightsSection({ mlInsights }) {
+  if (!mlInsights) return null;
+
+  const drivers = mlInsights.top_drivers || [];
+  if (drivers.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+        <span style={{
+          display: "inline-block",
+          background: "linear-gradient(135deg, rgba(108,99,255,0.12), rgba(59,110,248,0.08))",
+          border: "1px solid rgba(108,99,255,0.2)",
+          borderRadius: 8, padding: "2px 10px",
+          fontSize: "0.62rem", fontWeight: 700,
+          letterSpacing: "0.08em", textTransform: "uppercase",
+          color: "#6c63ff", fontFamily: "Plus Jakarta Sans, sans-serif",
+        }}>ML Model · GradientBoosting</span>
+      </div>
+
+      <div style={{
+        background: "rgba(16,185,129,0.04)",
+        border: "1px solid rgba(16,185,129,0.15)",
+        borderRadius: 14, padding: "14px 16px",
+      }}>
+        <p style={{
+          fontSize: "0.7rem", fontWeight: 700,
+          textTransform: "uppercase", letterSpacing: "0.06em",
+          color: "#10b981", fontFamily: "Plus Jakarta Sans, sans-serif",
+          marginBottom: 12,
+        }}>✅ What's working</p>
+        {drivers.map((d, i) => (
+          <DriverBar
+            key={i}
+            label={d.label}
+            importance={d.importance}
+            yourValue={d.your_value}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────
-export default function ATSReport({ atsScore, atsBreakdown }) {
+export default function ATSReport({ atsScore, atsBreakdown, mlInsights }) {
   const [expanded, setExpanded] = useState(false);
 
   if (atsScore == null) return null;
 
   const col  = scoreColor(atsScore);
-  const tips = getTips(atsBreakdown, atsScore);
   const bd   = atsBreakdown || {};
+
+  // Use ML improve_here tips if available, otherwise fall back to rule-based tips
+  const mlTips = mlInsights?.improve_here || [];
+  const tips   = mlTips.length > 0
+    ? mlTips.map(t => ({ icon: "🔧", title: t.label, desc: t.tip }))
+    : getFallbackTips(bd, atsScore);
 
   return (
     <div className="glass rounded-3xl p-6" style={{ marginBottom: 0 }}>
@@ -196,9 +254,9 @@ export default function ATSReport({ atsScore, atsBreakdown }) {
           {/* Mini metric pills */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {[
-              { label: "Skills",    v: `${bd.skills?.score || 0}/30`   },
-              { label: "Verbs",     v: `${bd.verbs?.score  || 0}/20`   },
-              { label: "Numbers",   v: `${bd.quantified?.score || 0}/20`},
+              { label: "Skills",    v: `${bd.skills?.score || 0}/30`    },
+              { label: "Verbs",     v: `${bd.verbs?.score  || 0}/20`    },
+              { label: "Numbers",   v: `${bd.quantified?.score || 0}/20` },
               { label: "Sections",  v: `${bd.sections?.score  || 0}/20` },
               { label: "Length",    v: `${bd.length?.words || 0}w`      },
             ].map((m) => (
@@ -265,14 +323,19 @@ export default function ATSReport({ atsScore, atsBreakdown }) {
         </div>
       )}
 
-      {/* Tips */}
+      {/* ── ML Insights: top drivers + improve_here ── */}
+      <MLInsightsSection mlInsights={mlInsights} />
+
+      {/* ── Tips (ML-sourced when available, fallback otherwise) ── */}
       {tips.length > 0 && (
-        <div>
+        <div style={{ marginTop: 20 }}>
           <p style={{
             fontSize: "0.72rem", fontWeight: 600, letterSpacing: "0.06em",
             textTransform: "uppercase", color: "var(--text-3)",
             fontFamily: "Plus Jakarta Sans, sans-serif", marginBottom: 10,
-          }}>Improvement tips</p>
+          }}>
+            {mlInsights?.improve_here?.length > 0 ? "ML-powered improvement tips" : "Improvement tips"}
+          </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {tips.map((tip, i) => (
               <div key={i} style={{

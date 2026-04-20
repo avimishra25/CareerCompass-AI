@@ -27,7 +27,7 @@ const analysisSchema = new mongoose.Schema(
       type: String,
       default: "resume.pdf",
     },
-    // ── New fields ──
+    // ── Existing fields ──
     targetRole: {
       type: String,
       default: null,
@@ -39,6 +39,14 @@ const analysisSchema = new mongoose.Schema(
     atsBreakdown: {
       type: Object,
       default: {},
+    },
+    // ── New: ML model insights ──
+    // Stores the GradientBoostingRegressor output:
+    // top_drivers (what scored well) and improve_here
+    // (what to fix), plus the raw feature values.
+    mlInsights: {
+      type: Object,
+      default: null,
     },
   },
   { timestamps: true }

@@ -34,6 +34,7 @@ export default function UploadResume() {
   const [targetRoleData,   setTargetRoleData]    = useState(null);
   const [atsScore,         setAtsScore]          = useState(null);
   const [atsBreakdown,     setAtsBreakdown]      = useState({});
+  const [mlInsights,       setMlInsights]        = useState(null);   // ← NEW
   const [loading,          setLoading]           = useState(false);
   const [pdfLoading,       setPdfLoading]        = useState(false);
   const [error,            setError]             = useState("");
@@ -50,13 +51,13 @@ export default function UploadResume() {
     if (!file) { setError("Please select a resume first."); return; }
     const fd = new FormData();
     fd.append("resume", file);
-    // ── NEW: send targetRole to Flask ──
     if (targetRole) fd.append("targetRole", targetRole);
 
     try {
       setLoading(true); setError("");
       setSkills([]); setMatchData({}); setBestRole(null);
       setAtsScore(null); setAtsBreakdown({}); setTargetRoleData(null);
+      setMlInsights(null);   // ← NEW: reset on each upload
 
       const res = await axios.post(`${API}/upload`, fd, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -67,8 +68,8 @@ export default function UploadResume() {
       setBestRole(res.data.bestRole);
       setAtsScore(res.data.atsScore          ?? null);
       setAtsBreakdown(res.data.atsBreakdown  || {});
-      // ── NEW: set target role analysis ──
       setTargetRoleData(res.data.targetRoleAnalysis || null);
+      setMlInsights(res.data.mlInsights      || null);   // ← NEW
     } catch (err) {
       if (err.response?.status === 401) { localStorage.removeItem("token"); window.location.reload(); }
       setError("Upload failed. Is the NLP server running?");
@@ -95,7 +96,6 @@ export default function UploadResume() {
 
       pdf.addImage(imgData, "PNG", 0, position, pageW, imgH);
 
-      // Handle multi-page if content is tall
       let heightLeft = imgH - pageH;
       while (heightLeft > 0) {
         position = heightLeft - imgH;
@@ -137,7 +137,7 @@ export default function UploadResume() {
             Upload a PDF — AI extracts skills, scores your ATS readiness, and matches you to 12 career paths.
           </p>
 
-          {/* ── NEW: Target Role Selector ── */}
+          {/* ── Target Role Selector ── */}
           <div className="mb-5">
             <label className="block text-xs font-semibold uppercase tracking-widest mb-2"
               style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
@@ -274,7 +274,7 @@ export default function UploadResume() {
             {/* ── Printable report area ── */}
             <div ref={reportRef} className="space-y-5" style={{ background: "transparent" }}>
 
-              {/* ── NEW: Target Role spotlight banner ── */}
+              {/* ── Target Role spotlight banner ── */}
               {targetRoleData && (
                 <div className="glass rounded-3xl p-6"
                   style={{ border: "1.5px solid rgba(59,110,248,0.3)", background: "rgba(59,110,248,0.04)" }}>
@@ -333,9 +333,13 @@ export default function UploadResume() {
                 </div>
               )}
 
-              {/* ATS Score Report */}
+              {/* ── ATS Score Report — now also receives mlInsights ── */}
               {atsScore !== null && (
-                <ATSReport atsScore={atsScore} atsBreakdown={atsBreakdown} />
+                <ATSReport
+                  atsScore={atsScore}
+                  atsBreakdown={atsBreakdown}
+                  mlInsights={mlInsights}
+                />
               )}
 
               <div className="grid md:grid-cols-2 gap-5">
@@ -427,6 +431,7 @@ export default function UploadResume() {
           bestRole={bestRole}
           matchData={matchData}
           targetRole={targetRole}
+          mlInsights={mlInsights}   // ← NEW: so chatbot can reference ML tips
         />
       )}
     </section>

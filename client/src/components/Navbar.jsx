@@ -45,23 +45,25 @@ export default function Navbar({ onNavigate, currentPage }) {
 
         {/* Desktop Nav */}
         <div className="hidden md:flex items-center gap-7">
-
-          {/* Logged in links */}
           {user && link("dashboard", "Dashboard")}
           {user && link("analyze",   "Analyze"  )}
           {user && link("history",   "History"  )}
-
-          {/* Always visible */}
           {link("about", "About")}
 
-          {/* User badge + logout OR Get Started */}
           {user ? (
             <div className="flex items-center gap-3">
-              <div
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl"
+
+              {/* ── Avatar — clicks to Profile page ── */}
+              <button
+                onClick={() => onNavigate("profile")}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl transition"
                 style={{
-                  background: "rgba(59,110,248,0.07)",
-                  border: "1px solid rgba(59,110,248,0.15)",
+                  background: currentPage === "profile"
+                    ? "rgba(59,110,248,0.14)"
+                    : "rgba(59,110,248,0.07)",
+                  border: currentPage === "profile"
+                    ? "1px solid rgba(59,110,248,0.35)"
+                    : "1px solid rgba(59,110,248,0.15)",
                 }}>
                 <div
                   className="w-6 h-6 rounded-lg flex items-center justify-center text-white text-xs font-bold"
@@ -71,7 +73,8 @@ export default function Navbar({ onNavigate, currentPage }) {
                 <span className="text-sm font-medium" style={{ color: "var(--text-2)" }}>
                   {user.name.split(" ")[0]}
                 </span>
-              </div>
+              </button>
+
               <button
                 onClick={logout}
                 className="text-xs px-3 py-1.5 rounded-lg font-medium transition"
@@ -115,6 +118,7 @@ export default function Navbar({ onNavigate, currentPage }) {
           {user && link("analyze",   "Analyze"  )}
           {user && link("history",   "History"  )}
           {link("about", "About")}
+          {user && link("profile",   "Profile"  )}  {/* ← ADD THIS */}
           {user && (
             <button
               onClick={() => { logout(); setMenuOpen(false); }}
