@@ -84,7 +84,7 @@ export default function About() {
               <h3 className="text-xl font-bold mb-0.5" style={{color:"var(--text)",fontFamily:'Plus Jakarta Sans,sans-serif'}}>Avi Mishra</h3>
               <p className="text-sm font-medium mb-3" style={{color:"#3b6ef8"}}>Full Stack Developer</p>
               <p className="text-sm leading-relaxed mb-4" style={{color:"var(--text-2)"}}>
-                Built CareerCompass AI from scratch — frontend, backend, NLP pipeline and everything in between.
+                Built CareerCompass AI from scratch — MERN stack, Python NLP pipeline, ML-powered ATS scoring engine, and OpenAI chatbot integration.
               </p>
               <a href="https://github.com/avimishra25" target="_blank" rel="noreferrer"
                 className="btn-ghost inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm">
@@ -103,7 +103,7 @@ export default function About() {
             <div className="text-3xl mb-3">🚀</div>
             <h3 className="font-bold text-lg mb-2" style={{color:"var(--text)",fontFamily:'Plus Jakarta Sans,sans-serif'}}>Open Source & Growing</h3>
             <p className="text-sm leading-relaxed mb-5" style={{color:"var(--text-2)"}}>
-              More roles, ATS scoring, PDF reports and an AI chatbot are coming. Star the repo to follow along.
+              ML-powered ATS scoring, PDF reports, resume comparison, and AI chatbot are live. Job description matching and career roadmaps coming next. Star the repo to follow along.
             </p>
             <a href="https://github.com/avimishra25/CareerCompass-AI" target="_blank" rel="noreferrer"
               className="btn-primary inline-block px-6 py-3 rounded-xl text-sm">
