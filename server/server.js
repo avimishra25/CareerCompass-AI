@@ -8,6 +8,7 @@ const fs       = require("fs");
 const path     = require("path");
 const FormData = require("form-data");
 const mongoose = require("mongoose");
+const passport = require("./config/passport"); // ← Google OAuth strategy
 
 const authRoutes = require("./routes/auth");
 const protect    = require("./middleware/auth");
@@ -23,11 +24,13 @@ app.use(cors({
     "https://career-compass-5tm4sgjrd-avimishra25s-projects.vercel.app",
     "http://localhost:3000",
   ],
-  methods:      ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods:        ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  credentials:  true,
+  credentials:    true,
 }));
+
 app.use(express.json());
+app.use(passport.initialize()); // ← required for passport (no sessions needed, we use JWT)
 
 mongoose
   .connect(process.env.MONGO_URI)
@@ -35,9 +38,6 @@ mongoose
   .catch((err) => console.error("❌ MongoDB error:", err.message));
 
 // ─── Job Roles ────────────────────────────────────────────────
-// Kept here so the Node layer can validate targetRole before
-// forwarding to the ML service (avoids unnecessary ML calls for
-// invalid roles).
 const JOB_ROLES = {
   "frontend developer":    { skills: ["html","css","javascript","react","typescript","tailwind","redux","nextjs"],            emoji: "🎨" },
   "backend developer":     { skills: ["node","express","mongodb","sql","python","rest api","docker","postgresql"],            emoji: "⚙️"  },
@@ -77,7 +77,6 @@ app.post("/upload", protect, upload.single("resume"), async (req, res) => {
 
     if (!file) return res.status(400).json({ error: "No file uploaded" });
 
-    // Forward resume PDF + targetRole to the Python ML service
     const form = new FormData();
     form.append("resume", fs.createReadStream(filePath), {
       filename:    file.originalname,
@@ -96,10 +95,9 @@ app.post("/upload", protect, upload.single("resume"), async (req, res) => {
       ats_score          = null,
       ats_breakdown      = {},
       targetRoleAnalysis = null,
-      ml_insights        = null,   // ← new: ML feature importances from Python
+      ml_insights        = null,
     } = nlpRes.data;
 
-    // Save to MongoDB — ml_insights stored for history view
     const analysis = await Analysis.create({
       user:         req.user.id,
       skills,
@@ -109,7 +107,7 @@ app.post("/upload", protect, upload.single("resume"), async (req, res) => {
       targetRole,
       atsScore:     ats_score,
       atsBreakdown: ats_breakdown,
-      mlInsights:   ml_insights,  // ← store new ML data
+      mlInsights:   ml_insights,
     });
 
     return res.json({
@@ -119,7 +117,7 @@ app.post("/upload", protect, upload.single("resume"), async (req, res) => {
       atsScore:           ats_score,
       atsBreakdown:       ats_breakdown,
       targetRoleAnalysis,
-      mlInsights:         ml_insights,  // ← pass to frontend
+      mlInsights:         ml_insights,
       analysisId:         analysis._id,
     });
 
@@ -128,10 +126,7 @@ app.post("/upload", protect, upload.single("resume"), async (req, res) => {
     res.status(500).json({ error: "Analysis failed", details: err.message });
 
   } finally {
-    // Always clean up the temp file
-    if (filePath && fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
+    if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
   }
 });
 
@@ -142,7 +137,7 @@ app.get("/api/history", protect, async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
     res.json(analyses);
-  } catch (error) {
+  } catch {
     res.status(500).json({ message: "Error fetching history" });
   }
 });
@@ -155,20 +150,14 @@ app.delete("/api/history/:id", protect, async (req, res) => {
     });
     if (!analysis) return res.status(404).json({ message: "Not found" });
     res.json({ message: "Deleted" });
-  } catch (error) {
+  } catch {
     res.status(500).json({ message: "Error deleting" });
   }
 });
 
 // ─── AI Agent proxy ───────────────────────────────────────────
-// CHANGE: now also forwards mlInsights from the request body
-// so the Python chatbot can include ML-identified improvement
-// tips in its system prompt (the history fix lives in app.py).
 app.post("/api/agent/chat", protect, async (req, res) => {
   try {
-    // req.body already contains: skills, bestRole, atsScore,
-    // atsBreakdown, message, history, targetRole, mlInsights
-    // — all forwarded as-is to the ML service.
     const response = await axios.post(`${ML_URL}/agent/gap`, req.body);
     res.json(response.data);
   } catch (error) {
@@ -177,11 +166,7 @@ app.post("/api/agent/chat", protect, async (req, res) => {
   }
 });
 
-// ─── Retrain endpoint (admin / dev use) ───────────────────────
-// Calls the /retrain route on the Python ML service to
-// regenerate and re-save the ATS scoring model.
-// Useful after you update the training data or feature logic.
-// Usage: POST /api/retrain  (requires auth)
+// ─── Retrain endpoint ─────────────────────────────────────────
 app.post("/api/retrain", protect, async (req, res) => {
   try {
     const response = await axios.post(`${ML_URL}/retrain`);
@@ -197,7 +182,7 @@ app.get("/api/ml/health", protect, async (req, res) => {
   try {
     const response = await axios.get(`${ML_URL}/health`);
     res.json(response.data);
-  } catch (error) {
+  } catch {
     res.status(503).json({ status: "ML service unreachable" });
   }
 });

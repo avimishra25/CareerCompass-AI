@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema(
   {
@@ -16,37 +15,17 @@ const userSchema = new mongoose.Schema(
       trim: true,
       match: [/^\S+@\S+\.\S+$/, "Please enter a valid email"],
     },
-    password: {
+    googleId: {
       type: String,
-      required: [true, "Password is required"],
-      minlength: [6, "Password must be at least 6 characters"],
-    },
-    otp: {
-      type: String,
-      default: null,
-    },
-    otpExpiry: {
-      type: Date,
-      default: null,
+      required: true,
+      unique: true,
     },
     isVerified: {
       type: Boolean,
-      default: false,
-    }
+      default: true, // always true — Google handles verification
+    },
   },
   { timestamps: true }
 );
-
-// Hash password before saving — async without next parameter
-userSchema.pre("save", async function () {
-  if (!this.isModified("password")) return;
-  const salt = await bcrypt.genSalt(12);
-  this.password = await bcrypt.hash(this.password, salt);
-});
-
-// Compare entered password with hashed
-userSchema.methods.matchPassword = async function (enteredPassword) {
-  return bcrypt.compare(enteredPassword, this.password);
-};
 
 module.exports = mongoose.model("User", userSchema);

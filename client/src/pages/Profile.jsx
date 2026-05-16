@@ -1,42 +1,8 @@
-import React, { useState } from "react";
+import React from "react";
 import { useAuth } from "../context/AuthContext";
 
 export default function Profile() {
-  const { user, changePassword, logout } = useAuth();
-
-  const [form, setForm] = useState({
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-  });
-  const [error, setError] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleChange = (e) =>
-    setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError(""); setSuccessMsg("");
-
-    if (form.newPassword !== form.confirmPassword)
-      return setError("New passwords do not match.");
-
-    if (form.newPassword.length < 6)
-      return setError("New password must be at least 6 characters.");
-
-    setLoading(true);
-    try {
-      await changePassword(form.currentPassword, form.newPassword);
-      setSuccessMsg("Password changed successfully!");
-      setForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
-    } catch (err) {
-      setError(err.response?.data?.message || "Something went wrong.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { user, logout } = useAuth();
 
   return (
     <div className="min-h-screen px-4 py-12 flex flex-col items-center">
@@ -49,7 +15,6 @@ export default function Profile() {
           </h2>
 
           <div className="flex items-center gap-4 mb-6">
-            {/* Avatar circle */}
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-white text-2xl font-bold flex-shrink-0"
               style={{ background: "linear-gradient(135deg,#3b6ef8,#6c63ff)" }}>
               {user?.name?.charAt(0).toUpperCase()}
@@ -74,79 +39,26 @@ export default function Profile() {
               <span style={{ color: "var(--text)" }}>{user?.email}</span>
             </div>
             <div className="flex justify-between text-sm" style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "12px" }}>
+              <span style={{ color: "var(--text-3)" }}>Sign-in method</span>
+              <span style={{ color: "var(--text)", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+                {/* Google icon */}
+                <svg width="14" height="14" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                </svg>
+                Google
+              </span>
+            </div>
+            <div className="flex justify-between text-sm" style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "12px" }}>
               <span style={{ color: "var(--text-3)" }}>Status</span>
               <span style={{ color: "#10b981", fontWeight: 600 }}>✓ Verified</span>
             </div>
           </div>
         </div>
 
-        {/* ── Change Password Card ── */}
-        <div className="glass rounded-3xl p-8">
-          <h2 className="text-xl font-bold mb-6" style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans,sans-serif" }}>
-            Change Password
-          </h2>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: "var(--text-3)" }}>
-                Current Password
-              </label>
-              <input
-                name="currentPassword" type="password" required
-                value={form.currentPassword} onChange={handleChange}
-                placeholder="Enter current password"
-                className="input-glass w-full rounded-xl px-4 py-3 text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: "var(--text-3)" }}>
-                New Password
-              </label>
-              <input
-                name="newPassword" type="password" required
-                value={form.newPassword} onChange={handleChange}
-                placeholder="Min. 6 characters"
-                className="input-glass w-full rounded-xl px-4 py-3 text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wider" style={{ color: "var(--text-3)" }}>
-                Confirm New Password
-              </label>
-              <input
-                name="confirmPassword" type="password" required
-                value={form.confirmPassword} onChange={handleChange}
-                placeholder="Repeat new password"
-                className="input-glass w-full rounded-xl px-4 py-3 text-sm"
-              />
-            </div>
-
-            {/* Error */}
-            {error && (
-              <div className="rounded-xl px-4 py-3 text-sm"
-                style={{ background: "rgba(244,63,126,0.08)", border: "1px solid rgba(244,63,126,0.2)", color: "#e11d6a" }}>
-                {error}
-              </div>
-            )}
-
-            {/* Success */}
-            {successMsg && (
-              <div className="rounded-xl px-4 py-3 text-sm"
-                style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", color: "#10b981" }}>
-                {successMsg}
-              </div>
-            )}
-
-            <button type="submit" disabled={loading}
-              className="btn-primary w-full py-3.5 rounded-xl text-sm mt-1 disabled:opacity-50 disabled:cursor-not-allowed">
-              {loading ? "Updating…" : "Update Password"}
-            </button>
-          </form>
-        </div>
-
-        {/* ── Logout Button ── */}
+        {/* ── Sign Out Card ── */}
         <div className="glass rounded-3xl p-6 text-center">
           <p className="text-sm mb-4" style={{ color: "var(--text-2)" }}>
             Want to sign out of your account?
