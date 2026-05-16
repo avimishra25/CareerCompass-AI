@@ -1,29 +1,29 @@
 # 🧭 CareerCompass AI
 
-> 🚀 AI-powered resume analyzer with ML-based ATS scoring, OpenAI career guidance, and email-verified authentication.
+> AI-powered resume analyzer with ML-based ATS scoring, OpenAI career guidance, and Google OAuth authentication.
 
 [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org)
 [![React](https://img.shields.io/badge/React-19-blue.svg)](https://react.dev)
 [![Python](https://img.shields.io/badge/Python-3.10+-yellow.svg)](https://python.org)
 [![scikit-learn](https://img.shields.io/badge/scikit--learn-1.4-orange.svg)](https://scikit-learn.org)
-![AI Powered](https://img.shields.io/badge/AI-Powered-blueviolet)
-![ATS Optimized](https://img.shields.io/badge/ATS-Optimized-green)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green.svg)](https://mongodb.com/atlas)
+![Deployed](https://img.shields.io/badge/Deployed-Vercel%20%2B%20Render%20%2B%20HuggingFace-blueviolet)
 
 ---
 
 ## 📌 Overview
 
-CareerCompass AI is an AI-powered career intelligence platform that analyzes resumes and guides users toward their ideal career path.
+CareerCompass AI is a full-stack career intelligence platform that analyzes resumes and provides actionable feedback for job seekers.
 
-It combines NLP (spaCy + TF-IDF) with a trained **GradientBoostingRegressor ML model** and OpenAI to extract skills, predict ATS readiness scores, surface ML-identified improvement insights, and provide personalized career guidance through an interactive chatbot with full conversation memory.
+It combines NLP (spaCy + TF-IDF) with a trained **GradientBoostingRegressor ML model** and OpenAI GPT-4o-mini to extract skills, predict ATS readiness scores, surface ML-identified improvement insights, and provide personalized career guidance through an interactive chatbot with full conversation memory.
 
-The platform goes beyond analysis — it tells users **exactly what to fix and why**, backed by a real ML model trained on 600 synthetic resume samples.
+The platform goes beyond analysis — it tells users **exactly what to fix and why**, backed by a real ML model trained on 600 synthetic resume samples across 12 job profiles.
 
 ---
 
 ## ▶️ Live Demo
+
 **https://career-compass-ai-omega-smoky.vercel.app/**
 
 ---
@@ -31,9 +31,9 @@ The platform goes beyond analysis — it tells users **exactly what to fix and w
 ## ✨ Features
 
 ### 🔐 Authentication
-- JWT-based register / login / logout with bcrypt password hashing
-- **Email OTP verification on registration** — account activated only after verifying email
-- Profile page with account info and **change password** functionality
+- **Google OAuth 2.0** via Passport.js — one-click sign in, no password required
+- JWT-based session management with 7-day token expiry
+- Secure token handoff via server-side redirect after OAuth callback
 
 ### 📄 Resume Analysis
 - Drag & drop PDF upload
@@ -42,90 +42,75 @@ The platform goes beyond analysis — it tells users **exactly what to fix and w
 - TF-IDF cosine similarity skill ranking
 - Career role matching across **12 job profiles** with match % and missing skills
 - Target role selection — benchmarks analysis specifically against your goal role
-- Best role auto-detection
 
 ### 📊 ML-Powered ATS Scoring
 - **GradientBoostingRegressor** trained on 600 synthetic resume samples
-- Scores resume across **10 features**: skill count, skill density, action verb count, verb density, quantified achievements, section count, word count, sentence length, contact info, summary presence
+- Scores resumes across **10 features**: skill count, skill density, action verb count, verb density, quantified achievements, section count, word count, sentence length, contact info, summary presence
 - Feature importance extraction — surfaces **top_drivers** (what scored well) and **improve_here** (what to fix)
 - Actionable ML-powered improvement tips per feature
-- Backward-compatible 5-dimension breakdown (skills, verbs, quantified, sections, length)
 - Score out of 100 with circular gauge UI
 
-### 💬 AI Chatbot
+### 💬 AI Career Chatbot
 - OpenAI GPT-4o-mini powered career advisor
-- **Full conversation history** injected into every API call (multi-turn memory)
-- ML improvement insights injected into system prompt for consistent advice
+- Full conversation history injected into every API call (multi-turn memory)
+- ML improvement insights injected into system prompt for consistent, resume-aware advice
 - Target role and best role context passed per session
 
 ### 📄 PDF Report Export
-- Download full analysis as PDF (jsPDF + html2canvas)
-- Frontend-based, no backend load
+- Download full ATS analysis report as PDF (jsPDF + html2canvas)
+- Frontend-based rendering — no backend load
 
 ### 🔀 Resume Comparison
 - Select any 2 past analyses and compare side-by-side
-- Built on saved history data
+- Diff view for ATS score, skill matches, and ML insights
 
 ### 📊 Progress Tracker & Dashboard
-- Skills progress tracker across analyses
+- Skills progress tracker across multiple analyses over time
 - Dashboard stats: total analyses, top matched role, average ATS score, last analysis date
 - Visual progress bars and glassmorphism UI
 
 ### 🕓 Analysis History
 - Every analysis saved to MongoDB with full mlInsights
 - View, manage, and delete past reports
-- ATS score and target role shown per entry
 
 ---
 
-## 🧠 ML Model Details
-
-The ATS scoring engine uses a **scikit-learn Pipeline**:
-
-```
-StandardScaler → GradientBoostingRegressor
-  n_estimators=200 | learning_rate=0.05 | max_depth=4
-```
-
-**Training data:** 600 synthetic resume samples across 3 quality tiers (poor / average / good) with Gaussian noise (σ=3) for smooth curve learning. Seed fixed at 42 for reproducibility.
-
-**Feature importances** are extracted from `regressor.feature_importances_` and returned to the frontend as `top_drivers` and `improve_here` for every analysis.
-
-**Model persistence:** Saved as `ats_model.pkl` on first startup. Reloaded on subsequent restarts. Retrainable via `POST /api/retrain`.
-
----
-
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | React.js 19, Tailwind CSS, Axios, jsPDF, html2canvas |
-| State Management | React AuthContext (global session + email verification state) |
-| Backend | Node.js 18+, Express.js |
-| File Handling | Multer (PDF uploads, disk storage) |
-| Authentication | JWT, bcryptjs, Nodemailer (OTP email) |
-| Database | MongoDB Atlas, Mongoose |
-| NLP | Python, spaCy (en_core_web_sm), TF-IDF, pdfminer.six |
-| ML Model | scikit-learn (GradientBoostingRegressor, StandardScaler, Pipeline) |
-| AI Chatbot | OpenAI GPT-4o-mini |
-| Deployment | Vercel (frontend), Render (backend), Hugging Face Spaces (ML) |
-
----
-
-## 🏗️ Architecture & Deployment
+## 🏗️ Architecture
 
 CareerCompass AI is a distributed 3-service architecture:
 
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        User Browser                             │
+│                    React 19 + Tailwind CSS                      │
+│                      (Vercel — CDN)                             │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ HTTPS / JWT
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Node.js / Express                            │
+│         Auth · Upload · History · Analysis Routes               │
+│                    (Render — Web Service)                       │
+│                           │                                     │
+│              ┌────────────┴────────────┐                        │
+│              ▼                         ▼                        │
+│     MongoDB Atlas                 Flask ML Service              │
+│   (Users · Analyses)          spaCy · TF-IDF · GBR             │
+│                               OpenAI GPT-4o-mini                │
+│                           (Hugging Face Spaces)                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 | Service | Technology | Host |
 |---|---|---|
-| Frontend | React.js + Tailwind CSS | Vercel |
+| Frontend | React 19 + Tailwind CSS | Vercel |
 | Core Backend | Node.js + Express.js | Render |
 | ML / NLP Engine | Python + Flask + scikit-learn | Hugging Face Spaces |
 | Database | MongoDB Atlas | MongoDB Cloud |
 
 ---
 
-## 🧠 How It Works
+## 🔁 Request Flow
 
 ```
 User uploads Resume PDF
@@ -157,6 +142,64 @@ React renders: ATS Report + ML Insights + Career Match + Chatbot
 
 ---
 
+## 🔐 Authentication Flow
+
+```
+User clicks "Continue with Google"
+        ↓
+Frontend → GET /api/auth/google
+        ↓
+Passport.js redirects to Google consent screen
+        ↓
+Google → GET /api/auth/google/callback
+        ↓
+Passport verifies profile → upserts User in MongoDB
+        ↓
+Server generates JWT → redirects to CLIENT_URL?token=...
+        ↓
+React reads token from URL (synchronous useState initializer)
+        ↓
+OAuthSuccess: saves token to localStorage → fetches /api/auth/me
+        ↓
+AuthContext sets user state → navigate to Dashboard
+```
+
+---
+
+## 🧠 ML Model Details
+
+The ATS scoring engine uses a **scikit-learn Pipeline**:
+
+```
+StandardScaler → GradientBoostingRegressor
+  n_estimators=200 | learning_rate=0.05 | max_depth=4
+```
+
+**Training data:** 600 synthetic resume samples across 3 quality tiers (poor / average / good) with Gaussian noise (σ=3) for smooth score distribution. Seed fixed at 42 for reproducibility.
+
+**Feature importances** are extracted from `regressor.feature_importances_` and returned as `top_drivers` and `improve_here` for every analysis.
+
+**Model persistence:** Saved as `ats_model.pkl` on first startup. Reloaded on subsequent restarts. Retrainable via `POST /retrain`.
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 19, Tailwind CSS, Axios, jsPDF, html2canvas |
+| State Management | React Context API (AuthContext) |
+| Backend | Node.js 18+, Express.js |
+| File Handling | Multer (PDF uploads) |
+| Authentication | Google OAuth 2.0, Passport.js, JWT, bcryptjs |
+| Database | MongoDB Atlas, Mongoose |
+| NLP | Python, spaCy (en_core_web_sm), TF-IDF, pdfminer.six |
+| ML Model | scikit-learn (GradientBoostingRegressor, StandardScaler, Pipeline) |
+| AI Chatbot | OpenAI GPT-4o-mini |
+| Deployment | Vercel (frontend), Render (backend), Hugging Face Spaces (ML) |
+
+---
+
 ## 📂 Project Structure
 
 ```
@@ -164,15 +207,15 @@ CareerCompass-AI/
 ├── client/                         # React frontend
 │   ├── src/
 │   │   ├── components/             # Navbar, ATSReport, CareerAgent, ProgressTracker
-│   │   ├── context/                # AuthContext (session + isVerified state)
-│   │   ├── pages/                  # AuthPage, UploadResume, History, Dashboard
-│   │   │                           # About, Compare, Profile
+│   │   ├── context/                # AuthContext (JWT session management)
+│   │   ├── pages/                  # AuthPage, OAuthSuccess, UploadResume,
+│   │   │                           # History, Dashboard, About, Compare, Profile
 │   │   └── App.js
 ├── server/                         # Node.js backend
+│   ├── config/                     # passport.js (Google OAuth strategy)
 │   ├── middleware/                 # JWT auth middleware
-│   ├── models/                     # User (+ otp/isVerified fields), Analysis (+ mlInsights)
-│   ├── routes/                     # auth.js (register, verify-otp, login, /me, change-password)
-│   ├── utils/                      # OTP generation, email sending (Nodemailer)
+│   ├── models/                     # User, Analysis (+ mlInsights)
+│   ├── routes/                     # auth.js (Google OAuth, /me)
 │   ├── server.js
 │   └── .env
 └── ml-service/                     # Python ML + NLP service
@@ -183,7 +226,7 @@ CareerCompass-AI/
 
 ---
 
-## ⚙️ Production Environment Variables
+## ⚙️ Environment Variables
 
 **Vercel (Frontend)**
 ```env
@@ -194,9 +237,12 @@ REACT_APP_API_URL=https://your-backend-on-render.com
 ```env
 MONGO_URI=mongodb+srv://...
 JWT_SECRET=your_secret_key
-ML_SERVICE_URL=https://your-space-name.hf.space
-EMAIL_USER=your_gmail@gmail.com
-EMAIL_PASS=your_gmail_app_password
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+GOOGLE_CALLBACK_URL=https://your-backend.onrender.com/api/auth/google/callback
+CLIENT_URL=https://your-frontend.vercel.app
+ML_SERVICE_URL=https://your-space.hf.space
+PORT=5000
 ```
 
 **Hugging Face Spaces (ML Service)**
@@ -212,6 +258,7 @@ OPENAI_API_KEY=your_openai_key
 - Node.js v18+
 - Python 3.10+
 - MongoDB Atlas account (free tier works)
+- Google Cloud Console project with OAuth 2.0 credentials
 
 ### 1. Clone Repository
 
@@ -234,8 +281,10 @@ MONGO_URI=mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/careerc
 JWT_SECRET=your_secret_key_here
 PORT=5000
 ML_SERVICE_URL=http://localhost:8000
-EMAIL_USER=your_gmail@gmail.com
-EMAIL_PASS=your_gmail_app_password
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+GOOGLE_CALLBACK_URL=http://localhost:5000/api/auth/google/callback
+CLIENT_URL=http://localhost:3000
 ```
 
 ```bash
@@ -249,6 +298,15 @@ node server.js
 ```bash
 cd client
 npm install
+```
+
+Create `.env` inside `/client`:
+
+```env
+REACT_APP_API_URL=http://localhost:5000
+```
+
+```bash
 npm start
 # App runs at http://localhost:3000
 ```
@@ -277,8 +335,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 ```bash
 python app.py
 # 🤖 Training ATS model on synthetic data...
-# ✅ Model trained — MAE: X.XX pts, RMSE: X.XX pts
-# 💾 Model saved to ats_model.pkl
+# ✅ Model trained
 # Server running on http://localhost:8000
 ```
 
@@ -290,62 +347,27 @@ python app.py
 | 2 — Backend | `node server.js` (server/) | 5000 |
 | 3 — Frontend | `npm start` (client/) | 3000 |
 
----
+### Google OAuth Setup (Local)
 
-## 🔐 Authentication Flow
-
-1. User registers with name, email, and password
-2. Password hashed with bcrypt before storing
-3. **OTP sent to registered email via Nodemailer**
-4. User enters OTP — account marked `isVerified: true` in MongoDB
-5. JWT token issued on successful login
-6. All protected routes require valid `Bearer` token
-7. Token verified server-side on every request
-8. AuthContext manages global session and verification state
-9. Profile page allows changing password (current password verified before update)
+1. Go to [Google Cloud Console](https://console.cloud.google.com) → APIs & Services → Credentials
+2. Create OAuth 2.0 Client ID (Web application)
+3. Add `http://localhost:5000/api/auth/google/callback` to Authorized redirect URIs
+4. Add your email as a test user under APIs & Services → OAuth consent screen → Audience
 
 ---
 
 ## 🔁 Retraining the ML Model
 
-The ATS model can be retrained on demand after code changes:
-
 ```bash
 # Via API (requires JWT)
-curl -X POST https://your-backend.com/api/retrain \
+curl -X POST https://your-backend.onrender.com/api/retrain \
   -H "Authorization: Bearer YOUR_TOKEN"
 
-# Or locally (no auth needed on Flask directly)
+# Locally (direct Flask call)
 curl -X POST http://localhost:8000/retrain
 ```
 
-Retrain when you: change `extract_features()`, update synthetic data tiers, or add new features to the model.
-
----
-
-## 🚀 Current Status
-
-### ✅ Completed
-- JWT Authentication (Register / Login / Logout)
-- **Email OTP verification on registration**
-- **Profile page with change password**
-- Resume PDF upload (drag & drop)
-- NLP skill extraction (spaCy, two-pass matching)
-- TF-IDF skill ranking
-- Career role matching (12 roles)
-- Skill gap analysis
-- Target role selection and benchmarking
-- **ML-powered ATS scoring (GradientBoostingRegressor)**
-- **ML feature importance insights (top_drivers, improve_here)**
-- OpenAI GPT-4o-mini chatbot with **full conversation history**
-- Analysis history (save / view / delete)
-- Resume comparison (side-by-side)
-- Progress tracker
-- PDF report export (jsPDF + html2canvas)
-- Dashboard with stats and visual insights
-- Modern glassmorphism UI
-- Protected routes with JWT middleware
-- /retrain and /health endpoints
+Retrain when you change `extract_features()`, update training data tiers, or add new scoring features.
 
 ---
 
@@ -354,8 +376,8 @@ Retrain when you: change `extract_features()`, update synthetic data tiers, or a
 - Job description keyword matching for role-specific ATS scoring
 - Career roadmap with learning path recommendations
 - Real job listing integration (LinkedIn, Indeed API)
-- Per-role ML models (separate model for each job category)
-- Resume builder with AI suggestions
+- Per-role ML models (separate model per job category)
+- Resume builder with inline AI suggestions
 
 ---
 
@@ -385,12 +407,6 @@ Retrain when you: change `extract_features()`, update synthetic data tiers, or a
 ## 📬 Contact
 
 Built by **Avi Mishra** — feel free to connect or raise an issue for feedback and suggestions.
-
----
-
-## 🏷️ Tags
-
-AI • ML • GradientBoosting • OpenAI • Resume Analyzer • ATS Scoring • NLP • spaCy • scikit-learn • Full Stack • MERN • Career Tech • React • Node.js • Python • Flask
 
 ---
 
