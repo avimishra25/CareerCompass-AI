@@ -98,7 +98,7 @@ function TypingDots() {
 }
 
 // ─── Main Agent component ─────────────────────────────────────
-export default function CareerAgent({ skills, atsScore, atsBreakdown, bestRole, matchData }) {
+export default function CareerAgent({ skills, atsScore, bestRole }) {
   const [open,    setOpen]    = useState(false);
   const [input,   setInput]   = useState("");
   const [messages, setMessages] = useState([
@@ -126,6 +126,10 @@ export default function CareerAgent({ skills, atsScore, atsBreakdown, bestRole, 
   const send = async (text) => {
     const content = (text || input).trim();
     if (!content || loading) return;
+    if ([...content].length > 2000) {
+      setError("Message must be at most 2000 characters.");
+      return;
+    }
 
     setInput("");
     setError("");
@@ -134,9 +138,9 @@ export default function CareerAgent({ skills, atsScore, atsBreakdown, bestRole, 
     setLoading(true);
 
     // Build history for API (exclude first welcome message)
-    const history = newMessages.slice(1, -1).map((m) => ({
+    const history = newMessages.slice(1, -1).slice(-10).map((m) => ({
       role:    m.role === "assistant" ? "assistant" : "user",
-      content: m.content,
+      content: [...m.content].slice(0, 2000).join(""),
     }));
 
     try {
@@ -144,11 +148,6 @@ export default function CareerAgent({ skills, atsScore, atsBreakdown, bestRole, 
         `${API}/api/agent/chat`,
         {
           message:      content,
-          skills:       skills     || [],
-          atsScore:     atsScore   || 0,
-          atsBreakdown: atsBreakdown || {},
-          bestRole:     bestRole   || {},
-          match:        matchData  || {},
           history,
         },
         {
@@ -163,7 +162,7 @@ export default function CareerAgent({ skills, atsScore, atsBreakdown, bestRole, 
       ]);
     } catch (err) {
       const errMsg =
-        err.response?.data?.reply ||
+        err.response?.data?.error || err.response?.data?.reply ||
         (err.code === "ECONNABORTED" ? "Request timed out. Try again." : "Something went wrong.");
       setError(errMsg);
       setMessages((prev) => [
@@ -306,6 +305,12 @@ export default function CareerAgent({ skills, atsScore, atsBreakdown, bestRole, 
                 }}>{s}</button>
               ))}
             </div>
+          )}
+
+          {error && (
+            <p role="alert" style={{ padding: "0 12px 8px", color: "#b91c1c", fontSize: "0.75rem" }}>
+              {error}
+            </p>
           )}
 
           {/* Input bar */}

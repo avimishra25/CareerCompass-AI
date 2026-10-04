@@ -6,9 +6,11 @@ const cors     = require("cors");
 const axios    = require("axios");
 const fs       = require("fs");
 const path     = require("path");
+const { randomUUID } = require("crypto");
 const FormData = require("form-data");
 const mongoose = require("mongoose");
 const passport = require("./config/passport"); // ← Google OAuth strategy
+const { rateLimit } = require("express-rate-limit");
 
 const authRoutes = require("./routes/auth");
 const protect    = require("./middleware/auth");
@@ -16,6 +18,17 @@ const Analysis   = require("./models/Analysis");
 
 const ML_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 const app    = express();
+// Set only to the number of trusted reverse-proxy hops in this deployment.
+app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 0));
+const internalHeaders = () => ({ "X-Internal-Key": process.env.INTERNAL_API_KEY || "" });
+const chatLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  keyGenerator: (req) => String(req.user._id),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many chat requests. Try again later." },
+});
 
 app.use(cors({
   origin: [
@@ -29,6 +42,13 @@ app.use(cors({
   credentials:    true,
 }));
 
+app.use("/api", rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Try again later." },
+}));
 app.use(express.json());
 app.use(passport.initialize()); // ← required for passport (no sessions needed, we use JWT)
 
@@ -59,9 +79,20 @@ const storage = multer.diskStorage({
     if (!fs.existsSync("uploads/")) fs.mkdirSync("uploads/");
     cb(null, "uploads/");
   },
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
+  filename: (req, file, cb) => cb(null, randomUUID() + ".pdf"),
 });
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype !== "application/pdf" || path.extname(file.originalname).toLowerCase() !== ".pdf") {
+      const error = new Error("Only PDF files are allowed");
+      error.status = 400;
+      return cb(error);
+    }
+    cb(null, true);
+  },
+});
 
 // ─── Auth routes ──────────────────────────────────────────────
 app.use("/api/auth", authRoutes);
@@ -76,6 +107,19 @@ app.post("/upload", protect, upload.single("resume"), async (req, res) => {
     const targetRole = req.body.targetRole || null;
 
     if (!file) return res.status(400).json({ error: "No file uploaded" });
+    if (targetRole !== null && (typeof targetRole !== "string" || targetRole.length > 100)) {
+      return res.status(400).json({ error: "Invalid target role" });
+    }
+    const handle = await fs.promises.open(filePath, "r");
+    const signature = Buffer.alloc(5);
+    try {
+      await handle.read(signature, 0, 5, 0);
+    } finally {
+      await handle.close();
+    }
+    if (!signature.equals(Buffer.from("%PDF-"))) {
+      return res.status(400).json({ error: "Invalid PDF file" });
+    }
 
     const form = new FormData();
     form.append("resume", fs.createReadStream(filePath), {
@@ -85,7 +129,8 @@ app.post("/upload", protect, upload.single("resume"), async (req, res) => {
     if (targetRole) form.append("targetRole", targetRole);
 
     const nlpRes = await axios.post(`${ML_URL}/analyze`, form, {
-      headers: form.getHeaders(),
+      headers: { ...form.getHeaders(), ...internalHeaders() },
+      timeout: 60000,
     });
 
     const {
@@ -123,10 +168,17 @@ app.post("/upload", protect, upload.single("resume"), async (req, res) => {
 
   } catch (err) {
     console.error("Upload error:", err.message);
-    res.status(500).json({ error: "Analysis failed", details: err.message });
+    const status = [400, 413].includes(err.response?.status) ? err.response.status : (err.isAxiosError ? 503 : 500);
+    res.status(status).json({ error: status === 413 ? "PDF exceeds 5 MB limit" : "Analysis failed" });
 
   } finally {
-    if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    if (filePath) {
+      try {
+        await fs.promises.unlink(filePath);
+      } catch (err) {
+        if (err.code !== "ENOENT") console.error("Upload cleanup failed");
+      }
+    }
   }
 });
 
@@ -156,35 +208,53 @@ app.delete("/api/history/:id", protect, async (req, res) => {
 });
 
 // ─── AI Agent proxy ───────────────────────────────────────────
-app.post("/api/agent/chat", protect, async (req, res) => {
-  try {
-    const response = await axios.post(`${ML_URL}/agent/gap`, req.body);
-    res.json(response.data);
-  } catch (error) {
-    const msg = error.response?.data?.error || "Agent unavailable";
-    res.status(500).json({ reply: msg, error: msg });
+app.post("/api/agent/chat", protect, chatLimit, async (req, res) => {
+  const data = req.body;
+  if (!data || typeof data !== "object" || Array.isArray(data) ||
+      Object.keys(data).some((key) => !["message", "history"].includes(key)) ||
+      typeof data.message !== "string" || !data.message.trim() || [...data.message].length > 2000 ||
+      !Array.isArray(data.history) || data.history.some((item) =>
+        !item || typeof item !== "object" || Array.isArray(item) ||
+        Object.keys(item).length !== 2 ||
+        !["user", "assistant"].includes(item.role) ||
+        typeof item.content !== "string" || [...item.content].length > 2000)) {
+    return res.status(400).json({ error: "Invalid chat payload" });
   }
-});
-
-// ─── Retrain endpoint ─────────────────────────────────────────
-app.post("/api/retrain", protect, async (req, res) => {
+  const payload = {
+    message: data.message,
+    history: data.history.slice(-10).map(({ role, content }) => ({ role, content })),
+  };
   try {
-    const response = await axios.post(`${ML_URL}/retrain`);
+    const response = await axios.post(`${ML_URL}/agent/gap`, payload, {
+      headers: internalHeaders(),
+      timeout: 30000,
+    });
     res.json(response.data);
   } catch (error) {
-    const msg = error.response?.data?.message || "Retrain failed";
-    res.status(500).json({ error: msg });
+    const status = [400, 413, 429].includes(error.response?.status) ? error.response.status : 503;
+    res.status(status).json({ error: "Agent unavailable" });
   }
 });
 
 // ─── ML health check ─────────────────────────────────────────
 app.get("/api/ml/health", protect, async (req, res) => {
   try {
-    const response = await axios.get(`${ML_URL}/health`);
+    const response = await axios.get(`${ML_URL}/health`, { headers: internalHeaders(), timeout: 10000 });
     res.json(response.data);
   } catch {
     res.status(503).json({ status: "ML service unreachable" });
   }
+});
+
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err.code === "LIMIT_FILE_SIZE" || err.type === "entity.too.large") {
+    return res.status(413).json({ error: "Request too large" });
+  }
+  if (err instanceof multer.MulterError || err.status === 400 || err.type === "entity.parse.failed") {
+    return res.status(400).json({ error: "Invalid request or upload" });
+  }
+  res.status(500).json({ error: "Internal server error" });
 });
 
 const PORT = process.env.PORT || 5000;

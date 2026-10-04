@@ -6,6 +6,8 @@ import re
 import uuid
 import json
 import pickle
+import hmac
+from werkzeug.exceptions import HTTPException
 import numpy as np
 from pdfminer.high_level import extract_text
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -20,6 +22,37 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
+
+
+@app.before_request
+def require_internal_key():
+    if request.path == "/health":
+        return None
+    expected = os.environ.get("INTERNAL_API_KEY", "")
+    if not expected:
+        return jsonify({"error": "Internal API disabled"}), 403
+    supplied = request.headers.get("X-Internal-Key", "")
+    if not hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
+        return jsonify({"error": "Unauthorized"}), 401
+
+
+@app.errorhandler(413)
+def request_too_large(error):
+    return jsonify({"error": "Request exceeds 5 MB limit"}), 413
+
+
+@app.errorhandler(HTTPException)
+def http_error(error):
+    return jsonify({"error": error.name}), error.code
+
+
+@app.errorhandler(Exception)
+def internal_error(error):
+    app.logger.exception("Request failed")
+    return jsonify({"error": "Internal server error"}), 500
+
+
 CORS(app)
 nlp = spacy.load("en_core_web_sm")
 
@@ -654,13 +687,26 @@ def match_roles(detected_skills, target_role=None):
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    file        = request.files["resume"]
+    files = list(request.files.items(multi=True))
+    if len(files) != 1 or files[0][0] != "resume":
+        return jsonify({"error": "Exactly one resume PDF is required"}), 400
+    file = files[0][1]
+    if file.mimetype != "application/pdf" or not (file.filename or "").lower().endswith(".pdf"):
+        return jsonify({"error": "Only PDF files are allowed"}), 400
+    if file.stream.read(5) != b"%PDF-":
+        return jsonify({"error": "Invalid PDF file"}), 400
+    file.stream.seek(0)
     target_role = request.form.get("targetRole", None)
     file_path   = f"temp_{uuid.uuid4().hex}.pdf"
-    file.save(file_path)
+    if target_role is not None and (len(target_role) > 100 or len(request.form.getlist("targetRole")) != 1):
+        return jsonify({"error": "Invalid target role"}), 400
 
     try:
-        raw_text = extract_text(file_path)
+        file.save(file_path)
+        try:
+            raw_text = extract_text(file_path)[:50000]
+        except Exception:
+            return jsonify({"error": "Could not parse PDF"}), 400
         if not raw_text or not raw_text.strip():
             return jsonify({"skills": [], "error": "Could not extract text from PDF"}), 400
 
@@ -700,53 +746,29 @@ def analyze():
 
 @app.route("/agent/gap", methods=["POST"])
 def agent_gap():
+    data = request.get_json(silent=True)
+    if (not isinstance(data, dict) or set(data) != {"message", "history"}
+            or not isinstance(data["message"], str) or not data["message"].strip()
+            or len(data["message"]) > 2000 or not isinstance(data["history"], list)):
+        return jsonify({"error": "Invalid chat payload"}), 400
+    for item in data["history"]:
+        if (not isinstance(item, dict) or set(item) != {"role", "content"}
+                or item["role"] not in ("user", "assistant")
+                or not isinstance(item["content"], str) or len(item["content"]) > 2000):
+            return jsonify({"error": "Invalid chat history"}), 400
+
+    user_message = data["message"]
+    history = [{"role": item["role"], "content": item["content"]} for item in data["history"][-10:]]
+    # The server owns this instruction; clients supply conversation text only.
+    system_prompt = """You are a career advisor AI.
+Give specific, actionable advice based on the conversation.
+If a target role is mentioned, prioritize advice for that role.
+Do not assume a software role or invent resume details.
+When reviewing a resume, explain strengths, weaknesses, and skills to improve."""
+    if not client:
+        return jsonify({"error": "Agent unavailable"}), 503
+
     try:
-        if not client:
-            return jsonify({"error": "OpenAI API key not configured"}), 500
-
-        data = request.json or {}
-
-        user_skills   = data.get("skills", [])
-        best_role     = data.get("bestRole", {})
-        ats_score     = data.get("atsScore", 0)
-        user_message  = data.get("message", "Analyze my resume")
-        history       = data.get("history", [])          # ← was ignored before
-        target_role   = data.get("targetRole", None)
-        ml_insights   = data.get("mlInsights", {})       # ← pass from frontend
-
-        if isinstance(best_role, str):
-            best_role = {"role": best_role, "score": 0}
-
-        role_context = target_role if target_role else best_role.get("role", "unknown")
-
-        # Include ML improvement areas in the system prompt
-        improve_tips = ""
-        if ml_insights.get("improve_here"):
-            tips = [f"- {t['label']}: {t['tip']}"
-                    for t in ml_insights["improve_here"]]
-            improve_tips = "\nML-identified improvement areas:\n" + "\n".join(tips)
-
-        system_prompt = f"""You are a career advisor AI.
-
-Candidate skills: {', '.join(user_skills)}
-Predicted best role: {best_role.get('role', 'unknown')}
-{f"User's target role: {target_role}" if target_role else ""}
-ATS Score: {ats_score}/100{improve_tips}
-
-STRICT RULES:
-- If a target role is specified, prioritize advice for that role
-- Give specific, actionable advice
-- DO NOT assume software developer unless explicitly mentioned
-
-Give:
-1. Short summary
-2. Strengths
-3. Weaknesses
-4. Skills to improve specifically for {role_context}"""
-
-        # ── FIX: conversation history ──────────
-        # meaning every chatbot reply had no memory of the
-        # previous messages in the session.
         messages = [{"role": "system", "content": system_prompt}]
         if history:
             messages.extend(history)
@@ -760,9 +782,9 @@ Give:
         reply = response.choices[0].message.content.strip()
         return jsonify({"reply": reply})
 
-    except Exception as e:
-        print("❌ ERROR:", str(e))
-        return jsonify({"error": str(e), "reply": "Something went wrong"}), 500
+    except Exception:
+        app.logger.exception("Agent request failed")
+        return jsonify({"error": "Agent unavailable"}), 503
 
 
 @app.route("/retrain", methods=["POST"])
@@ -770,14 +792,14 @@ def retrain():
     """
     Admin endpoint to retrain the model on fresh synthetic data.
     Useful when you update the training logic or add new features.
-    Call: POST /retrain  (no body needed)
+    Call: POST /retrain with X-Internal-Key (no body needed)
     """
     try:
         global ats_model
         ats_model = train_ats_model()
         return jsonify({"status": "ok", "message": "Model retrained successfully"})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": "Retrain failed"}), 500
 
 
 @app.route("/health", methods=["GET"])

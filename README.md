@@ -52,9 +52,9 @@ The platform goes beyond analysis — it tells users **exactly what to fix and w
 
 ### 💬 AI Career Chatbot
 - OpenAI GPT-4o-mini powered career advisor
-- Full conversation history injected into every API call (multi-turn memory)
-- ML improvement insights injected into system prompt for consistent, resume-aware advice
-- Target role and best role context passed per session
+- Last 10 validated conversation messages retained per request
+- Server-owned system prompt; clients send only message and history
+- Discuss resume details and target roles through conversation text
 
 ### 📄 PDF Report Export
 - Download full ATS analysis report as PDF (jsPDF + html2canvas)
@@ -179,7 +179,7 @@ StandardScaler → GradientBoostingRegressor
 
 **Feature importances** are extracted from `regressor.feature_importances_` and returned as `top_drivers` and `improve_here` for every analysis.
 
-**Model persistence:** Saved as `ats_model.pkl` on first startup. Reloaded on subsequent restarts. Retrainable via `POST /retrain`.
+**Model persistence:** Saved as `ats_model.pkl` on first startup. Reloaded on subsequent restarts. Retrainable only through Flask `POST /retrain` with the internal API key.
 
 ---
 
@@ -243,14 +243,32 @@ GOOGLE_CALLBACK_URL=https://your-backend.onrender.com/api/auth/google/callback
 CLIENT_URL=https://your-frontend.vercel.app
 ML_SERVICE_URL=https://your-space.hf.space
 PORT=5000
+INTERNAL_API_KEY=replace_with_shared_random_secret
+TRUST_PROXY_HOPS=1
 ```
 
 **Hugging Face Spaces (ML Service)**
 ```env
 OPENAI_API_KEY=your_openai_key
+INTERNAL_API_KEY=replace_with_shared_random_secret
 ```
 
 ---
+
+Set the **same strong random `INTERNAL_API_KEY`** in Render environment variables and Hugging Face Space **Secrets**.
+Use the same value in both local `.env` files. Never place it in Vercel/client configuration or commit it.
+Node sends the key on every Flask request. Copy `server/.env.example` and `ml-service/.env.example` for local setup.
+`TRUST_PROXY_HOPS` defaults to `0` locally; use `1` only when Render is the single trusted reverse proxy.
+Verify the proxy topology before changing it, since it controls the IP used for rate limiting.
+
+Security limits: `/api` permits 300 requests per 15 minutes per IP; authenticated chat permits 20 per user.
+These counters are in memory per Node process and reset on restart; multiple replicas require a shared store.
+Uploads require one PDF, PDF MIME type, `.pdf` extension, and `%PDF-` signature; Node limits file size to 5 MiB.
+Flask limits the entire request (including multipart overhead) to 5 MiB and uses at most 50,000 extracted characters.
+Chat accepts exactly `{message, history}`: message is nonblank and 1–2000 characters; history is an array
+of `{role: "user"|"assistant", content: string}` with at most 2000 characters per item.
+Both services validate all supplied items before retaining the last 10. Client-provided system prompts, extra fields,
+and system roles return 400. The client trims long replies when resending history.
 
 ## ⚙️ Local Setup
 
@@ -285,6 +303,8 @@ GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
 GOOGLE_CALLBACK_URL=http://localhost:5000/api/auth/google/callback
 CLIENT_URL=http://localhost:3000
+INTERNAL_API_KEY=replace_with_shared_random_secret
+TRUST_PROXY_HOPS=0
 ```
 
 ```bash
@@ -330,6 +350,7 @@ Create `.env` inside `/ml-service`:
 
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
+INTERNAL_API_KEY=replace_with_shared_random_secret
 ```
 
 ```bash
@@ -358,13 +379,14 @@ python app.py
 
 ## 🔁 Retraining the ML Model
 
-```bash
-# Via API (requires JWT)
-curl -X POST https://your-backend.onrender.com/api/retrain \
-  -H "Authorization: Bearer YOUR_TOKEN"
+The ATS model can be retrained on demand after code changes. The Node `/api/retrain` route is removed.
+All Flask endpoints except `/health` require `X-Internal-Key`: missing or incorrect keys return JSON 401.
+If `INTERNAL_API_KEY` is unset or empty, protected endpoints return JSON 403, including `/retrain`.
 
-# Locally (direct Flask call)
-curl -X POST http://localhost:8000/retrain
+```bash
+# Call Flask directly using the shared secret from your environment.
+curl -X POST https://your-space-name.hf.space/retrain \
+  -H "X-Internal-Key: $INTERNAL_API_KEY"
 ```
 
 Retrain when you change `extract_features()`, update training data tiers, or add new scoring features.
