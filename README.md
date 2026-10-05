@@ -1,11 +1,11 @@
 # 🧭 CareerCompass AI
 
-> AI-powered resume analyzer with ML-based ATS scoring, Gemini career guidance, and Google OAuth authentication.
+> Resume analysis, deterministic job-description matching and skill gaps, ML-based ATS scoring, and Gemini career guidance.
 
 [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/Node.js-20.19+-green.svg)](https://nodejs.org)
 [![React](https://img.shields.io/badge/React-19-blue.svg)](https://react.dev)
-[![Python](https://img.shields.io/badge/Python-3.10+-yellow.svg)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.10%20%2F%203.11-yellow.svg)](https://python.org)
 [![scikit-learn](https://img.shields.io/badge/scikit--learn-1.4-orange.svg)](https://scikit-learn.org)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green.svg)](https://mongodb.com/atlas)
 ![Deployed](https://img.shields.io/badge/Deployed-Vercel%20%2B%20Render%20%2B%20HuggingFace-blueviolet)
@@ -16,15 +16,15 @@
 
 CareerCompass AI is a full-stack career intelligence platform that analyzes resumes and provides actionable feedback for job seekers.
 
-It combines NLP (spaCy + TF-IDF) with a trained **GradientBoostingRegressor ML model** and Google Gemini to extract skills, predict ATS readiness scores, surface ML-identified improvement insights, and provide personalized career guidance through an interactive chatbot with full conversation memory.
+It uses spaCy and TF-IDF to extract skills, a **GradientBoostingRegressor** to estimate ATS readiness, and Google Gemini for career chat. JD matching compares saved resume text with a pasted job description using TF-IDF similarity and skill coverage, without an LLM.
 
-The platform goes beyond analysis — it tells users **exactly what to fix and why**, backed by a real ML model trained on 600 synthetic resume samples across 12 job profiles.
+The ATS model trains on 600 synthetic feature samples across three quality tiers. Its score is a heuristic, not a validated prediction of employer ATS decisions. Matching against 12 predefined career profiles and matching against a custom JD are separate features. Chat resends the current conversation and resume context; it does not persist conversations to MongoDB.
 
 ---
 
 ## ▶️ Live Demo
 
-**https://career-compass-ai-omega-smoky.vercel.app/**
+[Open CareerCompass AI](https://career-compass-ai-omega-smoky.vercel.app/)
 
 ---
 
@@ -33,7 +33,7 @@ The platform goes beyond analysis — it tells users **exactly what to fix and w
 ### 🔐 Authentication
 - **Google OAuth 2.0** via Passport.js — one-click sign in, no password required
 - JWT-based session management with 7-day token expiry
-- Secure token handoff via server-side redirect after OAuth callback
+- Token handoff via redirect after OAuth callback; the client stores the JWT in localStorage
 
 ### 📄 Resume Analysis
 - Drag & drop PDF upload
@@ -50,6 +50,13 @@ The platform goes beyond analysis — it tells users **exactly what to fix and w
 - Actionable ML-powered improvement tips per feature
 - Score out of 100 with circular gauge UI
 
+### 🎯 JD Matching & Skill Gaps
+- Choose a saved resume analysis and paste a job description of up to 8000 characters
+- Deterministic score: 40% TF-IDF cosine similarity + 60% detected JD skill coverage
+- Matched, missing, and extra skill chips; top keyword gaps; Weak / Fair / Strong verdict
+- Saved match history with owner-only access and deletion
+- Older analyses without saved resume text require a fresh upload
+
 ### 💬 AI Career Chatbot
 - Google Gemini powered career advisor
 - Full validated conversation history and resume ML insights retained per request
@@ -62,11 +69,11 @@ The platform goes beyond analysis — it tells users **exactly what to fix and w
 
 ### 🔀 Resume Comparison
 - Select any 2 past analyses and compare side-by-side
-- Diff view for ATS score, skill matches, and ML insights
+- Compare ATS scores, role matches, and gained/lost/common skills
 
 ### 📊 Progress Tracker & Dashboard
 - Skills progress tracker across multiple analyses over time
-- Dashboard stats: total analyses, top matched role, average ATS score, last analysis date
+- Dashboard stats: total analyses, top matched role, average ATS score, last analysis date, JD-match count, and best JD-match score
 - Visual progress bars and glassmorphism UI
 
 ### 🕓 Analysis History
@@ -89,13 +96,13 @@ CareerCompass AI is a distributed 3-service architecture:
                            ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Node.js / Express                            │
-│         Auth · Upload · History · Analysis Routes               │
+│         Auth · Upload · History · JD Match Routes               │
 │                    (Render — Web Service)                       │
 │                           │                                     │
 │              ┌────────────┴────────────┐                        │
 │              ▼                         ▼                        │
 │     MongoDB Atlas                 Flask ML Service              │
-│   (Users · Analyses)          spaCy · TF-IDF · GBR             │
+│ (Users · Analyses · JDMatches)     spaCy · TF-IDF · GBR          │
 │                               Google Gemini                     │
 │                           (Hugging Face Spaces)                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -135,10 +142,15 @@ get_feature_importances() → top_drivers + improve_here
         ↓
 match_roles() → 12 role scores + missing skills
         ↓
-Flask returns JSON → Node.js saves to MongoDB (with mlInsights)
+Flask returns JSON → Node.js saves analysis, mlInsights, and bounded resume text
         ↓
 React renders: ATS Report + ML Insights + Career Match + Chatbot
 ```
+
+JD matching: React sends `analysisId`, `jd_text`, and optional `jdTitle` to Node.
+Node validates the JWT, rate limit, payload, and analysis ownership, then sends the saved resume text
+and JD to Flask with `X-Internal-Key`. Flask returns deterministic results; Node saves a `JDMatch`
+record and returns it to the page. Resume text is excluded from normal analysis-history responses.
 
 ---
 
@@ -177,7 +189,9 @@ StandardScaler → GradientBoostingRegressor
 
 **Training data:** 600 synthetic resume samples across 3 quality tiers (poor / average / good) with Gaussian noise (σ=3) for smooth score distribution. Seed fixed at 42 for reproducibility.
 
-**Feature importances** are extracted from `regressor.feature_importances_` and returned as `top_drivers` and `improve_here` for every analysis.
+**Feature importances** come from `regressor.feature_importances_`. These are global model importances,
+not per-resume causal explanations. `top_drivers` pairs them with resume measurements; `improve_here`
+uses additional rules to suggest improvements.
 
 **Model persistence:** Saved as `ats_model.pkl` on first startup. Reloaded on subsequent restarts. Retrainable only through Flask `POST /retrain` with the internal API key.
 
@@ -189,7 +203,7 @@ StandardScaler → GradientBoostingRegressor
 |---|---|
 | Frontend | React 19, Tailwind CSS, Axios, jsPDF, html2canvas |
 | State Management | React Context API (AuthContext) |
-| Backend | Node.js 18+, Express.js |
+| Backend | Node.js ≥20.19.0 (Mongoose 9 requirement), Express 5 |
 | File Handling | Multer (PDF uploads) |
 | Authentication | Google OAuth 2.0, Passport.js, JWT, bcryptjs |
 | Database | MongoDB Atlas, Mongoose |
@@ -209,12 +223,12 @@ CareerCompass-AI/
 │   │   ├── components/             # Navbar, ATSReport, CareerAgent, ProgressTracker
 │   │   ├── context/                # AuthContext (JWT session management)
 │   │   ├── pages/                  # AuthPage, OAuthSuccess, UploadResume,
-│   │   │                           # History, Dashboard, About, Compare, Profile
+│   │   │                           # History, Dashboard, JDMatch, About, Compare, Profile
 │   │   └── App.js
 ├── server/                         # Node.js backend
 │   ├── config/                     # passport.js (Google OAuth strategy)
 │   ├── middleware/                 # JWT auth middleware
-│   ├── models/                     # User, Analysis (+ mlInsights)
+│   ├── models/                     # User, Analysis (+ resumeText), JDMatch
 │   ├── routes/                     # auth.js (Google OAuth, /me)
 │   ├── server.js
 │   └── .env
@@ -227,12 +241,7 @@ CareerCompass-AI/
 
 ---
 
-## ⚙️ Environment Variables
-
-JD matching reuses `REACT_APP_API_URL`, `ML_SERVICE_URL`, `MONGO_URI`, `JWT_SECRET`, and the shared
-`INTERNAL_API_KEY` below. It needs no new environment variables or Gemini key.
-
-### JD matching and skill gaps (Phase 3)
+## 🎯 JD Matching: Scoring and Limits
 
 Open **JD Match**, choose a saved analysis, and paste up to 8000 Unicode characters of job description.
 New uploads retain up to 50,000 characters of extracted resume text, excluded from history responses.
@@ -262,16 +271,25 @@ the same 404; malformed inputs return 400, overlength JDs 413, throttling 429, a
 Records retain the JD (bounded to 8000 characters), result, title, analysis reference, and creation time.
 Deleting an analysis leaves its saved JD matches available until separately deleted.
 
-Phase 3 checks (from the repository root):
+The internal Flask endpoint `POST /jd-match` accepts `{ resume_text, jd_text }` with nonblank strings,
+at most 50,000 resume characters and 8000 JD characters. Its result contains `overall_match`,
+`matched_skills`, `missing_skills`, `extra_skills`, `keyword_gaps`, and `verdict`.
+Node returns HTTP 201 with the saved record, including that result under `result`. Missing/invalid
+JWTs return 401; database failures return sanitized 500 errors. Call Flask through Node in the browser.
+
+### Tests and manual checks
+
+From the repository root, after completing local setup:
 
 ```powershell
-python -m unittest discover -s ml-service -p "test_*.py"
+.\ml-service\venv\Scripts\python.exe -m unittest discover -s ml-service -p "test_*.py"
 npm --prefix server test
 npm --prefix client test -- --watchAll=false --runInBand --runTestsByPath src/pages/JDMatch.test.jsx src/components/CareerAgent.test.jsx
 npm --prefix client run build
 ```
 
-Use the ML virtual environment for Python. Scoring tests use real scikit-learn and stub spaCy's lemma
+On macOS/Linux, replace the Python executable above with `./ml-service/venv/bin/python`.
+Scoring tests use real scikit-learn and stub spaCy's lemma
 pass; Node tests use real JWT, middleware, and schema validation with mocked MongoDB and Flask calls.
 For an integration check, start all three services and upload a PDF containing
 `Python Flask PostgreSQL Docker`. Match the same text (Strong), then
@@ -280,6 +298,12 @@ count/best score. Empty/whitespace JD must return 400; an 8001-character JD must
 (both are blocked in the UI). With another account's JWT, submit the first account's analysis ID:
 expect 404 and no saved match. Confirm foreign matches cannot be listed or deleted, and deleting an
 owned match updates its history and Dashboard stats.
+
+## ⚙️ Environment Variables
+
+JD matching reuses `REACT_APP_API_URL`, `ML_SERVICE_URL`, `MONGO_URI`, `JWT_SECRET`, and the shared
+`INTERNAL_API_KEY`. It needs no new environment variables or Gemini key. The Node authentication
+configuration is also required to sign in. Local values and startup commands appear below.
 
 **Vercel (Frontend)**
 ```env
@@ -309,10 +333,9 @@ INTERNAL_API_KEY=replace_with_shared_random_secret
 
 Chat uses Google's official [`google-genai` Python SDK](https://googleapis.github.io/python-genai/).
 Create a key in [Google AI Studio](https://aistudio.google.com/apikey) and store `GEMINI_API_KEY`
-only in the ML service's environment/Space Secrets. `GEMINI_MODEL` defaults to `gemini-3.5-flash-lite`,
-a model listed with free input/output tiers in [Google's pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.5-flash-lite)
-and [model catalog](https://ai.google.dev/gemini-api/docs/models) (checked October 5, 2026).
-Free-tier availability and quotas depend on the project. No Gemini secret belongs in the browser or Node environment.
+only in the ML service's environment/Space Secrets. The code defaults `GEMINI_MODEL` to
+`gemini-3.5-flash-lite`; configure a model available to your Google project. Provider availability,
+quotas, and pricing are external to this repository. No Gemini secret belongs in the browser or Node environment.
 
 All LLM requests pass through `ml-service/llm.py:generate(system_prompt, messages, json_mode=False, max_output_tokens=1024)`.
 It maps assistant messages to Gemini's `model` role and uses `system_instruction` for the server prompt.
@@ -325,8 +348,8 @@ retries malformed JSON once, then raises `LLMError`; successful calls always ret
 There is one transient retry and one JSON repair retry per invocation (at most three SDK requests).
 
 Deploy the ML service, then Node, then the client so history handling and safe error messages agree.
-The request/response shape stays `{message, history}` / `{reply}`; existing saved analyses require no migration.
-For rollback, redeploy the previous Phase 1 revisions and their environment configuration; no data rollback is needed.
+The chat request/response shape is `{message, history}` / `{reply}`. Existing analyses remain readable;
+JD matching requires re-upload for analyses without `resumeText`. JD matching adds a separate collection.
 
 ---
 
@@ -336,7 +359,7 @@ Node sends the key on every Flask request. Copy `server/.env.example` and `ml-se
 `TRUST_PROXY_HOPS` defaults to `0` locally; use `1` only when Render is the single trusted reverse proxy.
 Verify the proxy topology before changing it, since it controls the IP used for rate limiting.
 
-Security limits: `/api` permits 300 requests per 15 minutes per IP; authenticated chat permits 20 per user.
+Security limits: `/api` permits 300 requests per 15 minutes per IP; chat and JD-match POST each permit 20 per user per 15 minutes.
 These counters are in memory per Node process and reset on restart; multiple replicas require a shared store.
 Uploads require one PDF, PDF MIME type, `.pdf` extension, and `%PDF-` signature; Node limits file size to 5 MiB.
 Flask limits the entire request (including multipart overhead) to 5 MiB and uses at most 50,000 extracted characters.
@@ -348,108 +371,152 @@ and system roles return 400. The client resends replies without truncation.
 ## ⚙️ Local Setup
 
 ### Prerequisites
-- Node.js v18+
-- Python 3.10+
-- MongoDB Atlas account (free tier works)
-- Google Cloud Console project with OAuth 2.0 credentials
 
-### 1. Clone Repository
+- Node.js **20.19.0 or newer**, as required by the installed Mongoose 9 dependency
+- Python **3.11** for the commands below; the Docker image uses Python 3.10
+- A running local MongoDB server or a reachable MongoDB Atlas database
+- Google OAuth credentials for the existing sign-in flow
+- A Gemini API key only if you want career chat; resume analysis and JD matching do not call Gemini
 
-```bash
+The pinned spaCy 3.7.5, scikit-learn 1.4.2, and NumPy 1.26.4 stack predates Python 3.14.
+Use Python 3.11 for local setup instead of creating the environment with whichever `python` is on PATH.
+
+### 1. Clone and install Node dependencies
+
+Run in PowerShell:
+
+```powershell
 git clone https://github.com/avimishra25/CareerCompass-AI.git
 cd CareerCompass-AI
+npm --prefix server install
+npm --prefix client install
 ```
 
-### 2. Backend Setup
+For an existing checkout, open PowerShell in the repository root and run only the two install commands.
+The Windows commands below all start from that root unless stated otherwise.
+
+### 2. Create the ML virtual environment
+
+Check the Python launcher first:
+
+```powershell
+py -3.11 --version
+```
+
+If Python 3.11 is missing, install it, then reopen PowerShell:
+
+```powershell
+winget install --exact --id Python.Python.3.11
+```
+
+Create the environment and install the pinned packages and language model:
+
+```powershell
+py -3.11 -m venv ml-service/venv
+.\ml-service\venv\Scripts\python.exe -m pip install -r ml-service/requirements.txt
+.\ml-service\venv\Scripts\python.exe -m spacy download en_core_web_sm
+```
+
+These commands use the environment's executable directly, so PowerShell activation is unnecessary.
+Virtual environments are machine-specific. If an old environment reports **Unable to create process**,
+its base Python installation may have been removed or moved. Preserve anything needed from it, then
+recreate it using the installed Python 3.11 interpreter and reinstall the requirements.
+
+On macOS/Linux, with Python 3.11 installed, use:
 
 ```bash
-cd server
-npm install
+python3.11 -m venv ml-service/venv
+./ml-service/venv/bin/python -m pip install -r ml-service/requirements.txt
+./ml-service/venv/bin/python -m spacy download en_core_web_sm
 ```
 
-Create `.env` inside `/server`:
+### 3. Configure local environment files
 
-```env
-MONGO_URI=mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/careercompass
-JWT_SECRET=your_secret_key_here
+Create the files below if absent; update existing values without overwriting unrelated settings.
+`server/.env.example` and `ml-service/.env.example` provide starting values. Add the OAuth settings
+shown here to the server configuration for the existing sign-in flow.
+
+Generate two separate random values, one for `JWT_SECRET` and one for `INTERNAL_API_KEY`:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+**`server/.env`**
+
+```dotenv
+MONGO_URI=mongodb://127.0.0.1:27017/careercompass
+JWT_SECRET=<first-generated-value>
 PORT=5000
 ML_SERVICE_URL=http://localhost:8000
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
+INTERNAL_API_KEY=<second-generated-value>
+TRUST_PROXY_HOPS=0
+GOOGLE_CLIENT_ID=<your-google-client-id>
+GOOGLE_CLIENT_SECRET=<your-google-client-secret>
 GOOGLE_CALLBACK_URL=http://localhost:5000/api/auth/google/callback
 CLIENT_URL=http://localhost:3000
-INTERNAL_API_KEY=replace_with_shared_random_secret
-TRUST_PROXY_HOPS=0
 ```
 
-```bash
-node server.js
-# ✅ MongoDB connected
-# Server running on http://localhost:5000
+Replace `MONGO_URI` with your Atlas URI if using Atlas. Starting Node does not start MongoDB.
+Replace all angle-bracket placeholders with your own values.
+
+**`ml-service/.env`**
+
+```dotenv
+INTERNAL_API_KEY=<same-second-generated-value>
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
-### 3. Frontend Setup
+Set `GEMINI_API_KEY` to enable chat. Leave it blank when testing only resume analysis or JD matching.
+The `INTERNAL_API_KEY` values must match exactly between Node and Flask.
 
-```bash
-cd client
-npm install
-```
+**`client/.env`**
 
-Create `.env` inside `/client`:
-
-```env
+```dotenv
 REACT_APP_API_URL=http://localhost:5000
 ```
 
-```bash
-npm start
-# App runs at http://localhost:3000
-```
+Restart the relevant service after changing environment variables. Never put service secrets in the client.
 
-### 4. ML Service Setup
+### 4. Run all three services
 
-```bash
+Open three PowerShell terminals at the repository root and keep each running.
+
+**Terminal 1 — Flask**
+
+```powershell
 cd ml-service
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-# macOS / Linux
-source venv/bin/activate
-
-pip install -r requirements.txt
-python -m spacy download en_core_web_sm
+.\venv\Scripts\python.exe app.py
 ```
 
-Create `.env` inside `/ml-service`:
+**Terminal 2 — Node**
 
-```env
-GEMINI_API_KEY=your_gemini_api_key
-GEMINI_MODEL=gemini-3.5-flash-lite
-INTERNAL_API_KEY=replace_with_shared_random_secret
+```powershell
+cd server
+node server.js
 ```
 
-```bash
-python app.py
-# 🤖 Training ATS model on synthetic data...
-# ✅ Model trained
-# Server running on http://localhost:8000
+**Terminal 3 — React**
+
+```powershell
+cd client
+npm start
 ```
 
-### Running All Three Services
+On macOS/Linux, start Flask with `./venv/bin/python app.py` from `ml-service`; Node and React commands
+are unchanged. Flask loads or trains the ATS model during startup.
 
-| Terminal | Command | Port |
-|---|---|---|
-| 1 — ML Service | `python app.py` (ml-service, venv active) | 8000 |
-| 2 — Backend | `node server.js` (server/) | 5000 |
-| 3 — Frontend | `npm start` (client/) | 3000 |
+Open [http://localhost:3000](http://localhost:3000). Node runs on port 5000; Flask runs on port 8000.
+Check Flask with `Invoke-RestMethod http://localhost:8000/health` in PowerShell. Sign in, upload a fresh
+PDF resume, then choose **JD Match**. Analyses created before resume-text storage require re-upload.
 
-### Google OAuth Setup (Local)
+### Existing Google OAuth setup (local)
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com) → APIs & Services → Credentials
-2. Create OAuth 2.0 Client ID (Web application)
-3. Add `http://localhost:5000/api/auth/google/callback` to Authorized redirect URIs
-4. Add your email as a test user under APIs & Services → OAuth consent screen → Audience
+Configure a web OAuth client in [Google Cloud Console](https://console.cloud.google.com) with
+`http://localhost:5000/api/auth/google/callback` as an authorized redirect URI. Supply its credentials
+in `server/.env` and ensure your account is allowed to use the OAuth app while it is in testing.
 
 ---
 
@@ -471,7 +538,6 @@ Retrain when you change `extract_features()`, update training data tiers, or add
 
 ## 📈 Future Scope
 
-- Job description keyword matching for role-specific ATS scoring
 - Career roadmap with learning path recommendations
 - Real job listing integration (LinkedIn, Indeed API)
 - Per-role ML models (separate model per job category)
