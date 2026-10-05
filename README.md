@@ -301,10 +301,6 @@ owned match updates its history and Dashboard stats.
 
 ## ⚙️ Environment Variables
 
-JD matching reuses `REACT_APP_API_URL`, `ML_SERVICE_URL`, `MONGO_URI`, `JWT_SECRET`, and the shared
-`INTERNAL_API_KEY`. It needs no new environment variables or Gemini key. The Node authentication
-configuration is also required to sign in. Local values and startup commands appear below.
-
 **Vercel (Frontend)**
 ```env
 REACT_APP_API_URL=https://your-backend-on-render.com
@@ -348,8 +344,7 @@ retries malformed JSON once, then raises `LLMError`; successful calls always ret
 There is one transient retry and one JSON repair retry per invocation (at most three SDK requests).
 
 Deploy the ML service, then Node, then the client so history handling and safe error messages agree.
-The chat request/response shape is `{message, history}` / `{reply}`. Existing analyses remain readable;
-JD matching requires re-upload for analyses without `resumeText`. JD matching adds a separate collection.
+The chat request/response shape is `{message, history}` / `{reply}`.
 
 ---
 
@@ -359,7 +354,7 @@ Node sends the key on every Flask request. Copy `server/.env.example` and `ml-se
 `TRUST_PROXY_HOPS` defaults to `0` locally; use `1` only when Render is the single trusted reverse proxy.
 Verify the proxy topology before changing it, since it controls the IP used for rate limiting.
 
-Security limits: `/api` permits 300 requests per 15 minutes per IP; chat and JD-match POST each permit 20 per user per 15 minutes.
+Security limits: `/api` permits 300 requests per 15 minutes per IP; authenticated chat permits 20 per user per 15 minutes.
 These counters are in memory per Node process and reset on restart; multiple replicas require a shared store.
 Uploads require one PDF, PDF MIME type, `.pdf` extension, and `%PDF-` signature; Node limits file size to 5 MiB.
 Flask limits the entire request (including multipart overhead) to 5 MiB and uses at most 50,000 extracted characters.
