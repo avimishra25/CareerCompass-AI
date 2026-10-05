@@ -1,6 +1,6 @@
 # 🧭 CareerCompass AI
 
-> AI-powered resume analyzer with ML-based ATS scoring, OpenAI career guidance, and Google OAuth authentication.
+> AI-powered resume analyzer with ML-based ATS scoring, Gemini career guidance, and Google OAuth authentication.
 
 [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org)
@@ -16,7 +16,7 @@
 
 CareerCompass AI is a full-stack career intelligence platform that analyzes resumes and provides actionable feedback for job seekers.
 
-It combines NLP (spaCy + TF-IDF) with a trained **GradientBoostingRegressor ML model** and OpenAI GPT-4o-mini to extract skills, predict ATS readiness scores, surface ML-identified improvement insights, and provide personalized career guidance through an interactive chatbot with full conversation memory.
+It combines NLP (spaCy + TF-IDF) with a trained **GradientBoostingRegressor ML model** and Google Gemini to extract skills, predict ATS readiness scores, surface ML-identified improvement insights, and provide personalized career guidance through an interactive chatbot with full conversation memory.
 
 The platform goes beyond analysis — it tells users **exactly what to fix and why**, backed by a real ML model trained on 600 synthetic resume samples across 12 job profiles.
 
@@ -51,8 +51,8 @@ The platform goes beyond analysis — it tells users **exactly what to fix and w
 - Score out of 100 with circular gauge UI
 
 ### 💬 AI Career Chatbot
-- OpenAI GPT-4o-mini powered career advisor
-- Last 10 validated conversation messages retained per request
+- Google Gemini powered career advisor
+- Full validated conversation history and resume ML insights retained per request
 - Server-owned system prompt; clients send only message and history
 - Discuss resume details and target roles through conversation text
 
@@ -96,7 +96,7 @@ CareerCompass AI is a distributed 3-service architecture:
 │              ▼                         ▼                        │
 │     MongoDB Atlas                 Flask ML Service              │
 │   (Users · Analyses)          spaCy · TF-IDF · GBR             │
-│                               OpenAI GPT-4o-mini                │
+│                               Google Gemini                     │
 │                           (Hugging Face Spaces)                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -195,7 +195,7 @@ StandardScaler → GradientBoostingRegressor
 | Database | MongoDB Atlas, Mongoose |
 | NLP | Python, spaCy (en_core_web_sm), TF-IDF, pdfminer.six |
 | ML Model | scikit-learn (GradientBoostingRegressor, StandardScaler, Pipeline) |
-| AI Chatbot | OpenAI GPT-4o-mini |
+| AI Chatbot | Google Gemini |
 | Deployment | Vercel (frontend), Render (backend), Hugging Face Spaces (ML) |
 
 ---
@@ -219,7 +219,8 @@ CareerCompass-AI/
 │   ├── server.js
 │   └── .env
 └── ml-service/                     # Python ML + NLP service
-    ├── app.py                      # Flask, spaCy, TF-IDF, GBR, OpenAI
+    ├── app.py                      # Flask, spaCy, TF-IDF, GBR, Gemini
+    ├── llm.py                      # Swappable text-generation provider
     ├── requirements.txt
     └── .env
 ```
@@ -249,9 +250,31 @@ TRUST_PROXY_HOPS=1
 
 **Hugging Face Spaces (ML Service)**
 ```env
-OPENAI_API_KEY=your_openai_key
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-3.5-flash-lite
 INTERNAL_API_KEY=replace_with_shared_random_secret
 ```
+
+Chat uses Google's official [`google-genai` Python SDK](https://googleapis.github.io/python-genai/).
+Create a key in [Google AI Studio](https://aistudio.google.com/apikey) and store `GEMINI_API_KEY`
+only in the ML service's environment/Space Secrets. `GEMINI_MODEL` defaults to `gemini-3.5-flash-lite`,
+a model listed with free input/output tiers in [Google's pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.5-flash-lite)
+and [model catalog](https://ai.google.dev/gemini-api/docs/models) (checked October 5, 2026).
+Free-tier availability and quotas depend on the project. No Gemini secret belongs in the browser or Node environment.
+
+All LLM requests pass through `ml-service/llm.py:generate(system_prompt, messages, json_mode=False, max_output_tokens=1024)`.
+It maps assistant messages to Gemini's `model` role and uses `system_instruction` for the server prompt.
+Resume analysis and ML insights are injected as user context on each turn, including after clearing chat.
+Requests time out after 10 seconds per SDK request; transient network/408/429/500/502/503/504 failures retry once
+after a one-second backoff. SDK automatic retries are disabled. Exhausted quota returns JSON HTTP 503
+with `AI quota exhausted or rate limit reached. Try again later.` Invalid keys/configuration also return a safe 503.
+The Node proxy preserves only known safe error messages. JSON mode requests `application/json`, parses the response,
+retries malformed JSON once, then raises `LLMError`; successful calls always return a string, including JSON mode.
+There is one transient retry and one JSON repair retry per invocation (at most three SDK requests).
+
+Deploy the ML service, then Node, then the client so history handling and safe error messages agree.
+The request/response shape stays `{message, history}` / `{reply}`; existing saved analyses require no migration.
+For rollback, redeploy the previous Phase 1 revisions and their environment configuration; no data rollback is needed.
 
 ---
 
@@ -266,9 +289,9 @@ These counters are in memory per Node process and reset on restart; multiple rep
 Uploads require one PDF, PDF MIME type, `.pdf` extension, and `%PDF-` signature; Node limits file size to 5 MiB.
 Flask limits the entire request (including multipart overhead) to 5 MiB and uses at most 50,000 extracted characters.
 Chat accepts exactly `{message, history}`: message is nonblank and 1–2000 characters; history is an array
-of `{role: "user"|"assistant", content: string}` with at most 2000 characters per item.
-Both services validate all supplied items before retaining the last 10. Client-provided system prompts, extra fields,
-and system roles return 400. The client trims long replies when resending history.
+of `{role: "user"|"assistant", content: string}` with nonblank content, up to 2000 characters for user messages
+and 16000 for assistant replies. Both services validate and retain every supplied item; the existing JSON body-size limits still apply. Client-provided system prompts, extra fields,
+and system roles return 400. The client resends replies without truncation.
 
 ## ⚙️ Local Setup
 
@@ -349,7 +372,8 @@ python -m spacy download en_core_web_sm
 Create `.env` inside `/ml-service`:
 
 ```env
-OPENAI_API_KEY=your_openai_api_key_here
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-3.5-flash-lite
 INTERNAL_API_KEY=replace_with_shared_random_secret
 ```
 

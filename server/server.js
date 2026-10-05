@@ -217,12 +217,13 @@ app.post("/api/agent/chat", protect, chatLimit, async (req, res) => {
         !item || typeof item !== "object" || Array.isArray(item) ||
         Object.keys(item).length !== 2 ||
         !["user", "assistant"].includes(item.role) ||
-        typeof item.content !== "string" || [...item.content].length > 2000)) {
+        typeof item.content !== "string" || !item.content.trim() ||
+        [...item.content].length > (item.role === "assistant" ? 16000 : 2000))) {
     return res.status(400).json({ error: "Invalid chat payload" });
   }
   const payload = {
     message: data.message,
-    history: data.history.slice(-10).map(({ role, content }) => ({ role, content })),
+    history: data.history.map(({ role, content }) => ({ role, content })),
   };
   try {
     const response = await axios.post(`${ML_URL}/agent/gap`, payload, {
@@ -232,7 +233,16 @@ app.post("/api/agent/chat", protect, chatLimit, async (req, res) => {
     res.json(response.data);
   } catch (error) {
     const status = [400, 413, 429].includes(error.response?.status) ? error.response.status : 503;
-    res.status(status).json({ error: "Agent unavailable" });
+    const safeErrors = [
+      "AI quota exhausted or rate limit reached. Try again later.",
+      "AI service is not configured. Set GEMINI_API_KEY.",
+      "AI request rejected. Check GEMINI_API_KEY and GEMINI_MODEL configuration.",
+      "AI service temporarily unavailable. Try again later.",
+      "AI returned no text. Try rephrasing your request.",
+      "AI returned invalid JSON after one retry.",
+    ];
+    const message = error.response?.data?.error;
+    res.status(status).json({ error: safeErrors.includes(message) ? message : "Agent unavailable" });
   }
 });
 

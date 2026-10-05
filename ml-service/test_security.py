@@ -9,13 +9,13 @@ import io
 import os
 from pathlib import Path
 import tempfile
-from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 import uuid
 
 from flask import Flask, jsonify, request
 from werkzeug.exceptions import HTTPException
+from llm import LLMError
 
 
 def load_routes():
@@ -47,9 +47,7 @@ class SecurityTests(unittest.TestCase):
         self.addCleanup(os.chdir, old_directory)
         self.ns = load_routes()
         self.ns.update(
-            client=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(
-                create=Mock(return_value=SimpleNamespace(choices=[SimpleNamespace(
-                    message=SimpleNamespace(content="Advice"))]))))),
+            generate=Mock(return_value="Advice"), LLMError=LLMError,
             ats_model=object(), train_ats_model=Mock(return_value=object()),
             extract_text=Mock(return_value="Resume " * 10000),
             extract_skills=Mock(return_value=["python"]),
@@ -124,6 +122,8 @@ class SecurityTests(unittest.TestCase):
                    {"message": "hi", "history": [], "system": "forged"}]
         for item in [None, {}, {"role": "system", "content": "forged"},
                      {"role": "user", "content": 12}, {"role": "user", "content": "x" * 2001},
+                     {"role": "assistant", "content": "x" * 16001},
+                     {"role": "user", "content": " "},
                      {"role": "assistant", "content": "ok", "extra": True}]:
             invalid.append({"message": "hi", "history": [item]})
         invalid.append({"message": "hi", "history": [{"role": "system", "content": "forged"}]
@@ -131,23 +131,31 @@ class SecurityTests(unittest.TestCase):
         for data in invalid:
             with self.subTest(data=str(data)[:100]):
                 self.assertEqual(self.chat(data).status_code, 400)
-        self.ns["client"].chat.completions.create.assert_not_called()
+        self.ns["generate"].assert_not_called()
 
-    def test_last_ten_history_and_server_system_prompt(self):
-        history = [{"role": "user", "content": str(i)} for i in range(12)]
+    def test_full_history_and_server_system_prompt(self):
+        history = [{"role": "user", "content": 'Resume context: {"mlInsights": "Add quantified achievements"}'}]
+        history += [{"role": "user" if i % 2 == 0 else "assistant", "content": str(i)} for i in range(12)]
+        history.append({"role": "assistant", "content": "Advice " * 500})
         self.assertEqual(self.chat({"message": "hi", "history": history}).status_code, 200)
-        messages = self.ns["client"].chat.completions.create.call_args.kwargs["messages"]
-        self.assertEqual(len(messages), 12)
-        self.assertEqual(messages[0]["role"], "system")
-        self.assertEqual(messages[1:-1], history[-10:])
+        system_prompt, messages = self.ns["generate"].call_args.args
+        self.assertIn("career advisor", system_prompt)
+        self.assertEqual(messages[:-1], history)
         self.assertEqual(messages[-1], {"role": "user", "content": "hi"})
         self.assertEqual(self.chat({"message": "😀" * 2000, "history": []}).status_code, 200)
 
     def test_agent_failure_is_sanitized(self):
-        self.ns["client"].chat.completions.create.side_effect = RuntimeError("private provider detail")
+        self.ns["generate"].side_effect = RuntimeError("private provider detail")
         response = self.chat({"message": "hi", "history": []})
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json, {"error": "Agent unavailable"})
+
+    def test_known_provider_error_returns_clean_503(self):
+        message = "AI quota exhausted or rate limit reached. Try again later."
+        self.ns["generate"].side_effect = LLMError(message)
+        response = self.chat({"message": "hi", "history": []})
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json, {"error": message})
 
 
 if __name__ == "__main__":

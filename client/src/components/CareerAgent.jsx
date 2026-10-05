@@ -98,7 +98,7 @@ function TypingDots() {
 }
 
 // ─── Main Agent component ─────────────────────────────────────
-export default function CareerAgent({ skills, atsScore, bestRole }) {
+export default function CareerAgent({ skills, atsScore, atsBreakdown, bestRole, matchData, targetRole, mlInsights }) {
   const [open,    setOpen]    = useState(false);
   const [input,   setInput]   = useState("");
   const [messages, setMessages] = useState([
@@ -137,11 +137,18 @@ export default function CareerAgent({ skills, atsScore, bestRole }) {
     setMessages(newMessages);
     setLoading(true);
 
-    // Build history for API (exclude first welcome message)
-    const history = newMessages.slice(1, -1).slice(-10).map((m) => ({
+    // Include resume context on every turn, including after clearing the chat.
+    // Split context into validated user messages without dropping any insights.
+    const context = [...JSON.stringify({ skills, atsScore, atsBreakdown, bestRole, matchData, targetRole, mlInsights })];
+    const history = [];
+    for (let i = 0; i < context.length; i += 1800) {
+      history.push({ role: "user", content: `Resume analysis context (part ${Math.floor(i / 1800) + 1}):\n${context.slice(i, i + 1800).join("")}` });
+    }
+    // Exclude the welcome message and current prompt; retain every actual turn.
+    history.push(...newMessages.slice(1, -1).map((m) => ({
       role:    m.role === "assistant" ? "assistant" : "user",
-      content: [...m.content].slice(0, 2000).join(""),
-    }));
+      content: m.content,
+    })));
 
     try {
       const res = await axios.post(
@@ -246,7 +253,7 @@ export default function CareerAgent({ skills, atsScore, bestRole }) {
                 fontFamily: "Plus Jakarta Sans, sans-serif", lineHeight: 1.2,
               }}>AI Career Coach</p>
               <p style={{ fontSize: "0.65rem", color: "#10b981", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                ● Online · Powered by GPT-3.5
+                ● Online · Powered by Gemini
               </p>
             </div>
             <button onClick={clearChat} title="Clear chat" style={{
@@ -364,7 +371,7 @@ export default function CareerAgent({ skills, atsScore, bestRole }) {
             fontFamily: "Plus Jakarta Sans, sans-serif",
             padding: "4px 0 8px", background: "rgba(255,255,255,0.3)",
           }}>
-            GPT-3.5 · ~$0.001 per message · your OpenAI key
+            Career guidance powered by Gemini
           </p>
         </div>
       )}

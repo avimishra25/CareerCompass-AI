@@ -15,6 +15,7 @@ test("Phase 1 security boundaries", async (t) => {
   let app;
   let lastCall;
   let upstreamFailure = false;
+  let chatFailure;
   const wrappedExpress = (...args) => {
     app = express(...args);
     app.listen = () => {};
@@ -41,6 +42,7 @@ test("Phase 1 security boundaries", async (t) => {
           await ended;
         }
         if (upstreamFailure) throw Object.assign(new Error("private upstream detail"), { isAxiosError: true });
+        if (chatFailure && url.endsWith("/agent/gap")) throw { response: { status: 503, data: { error: chatFailure } } };
         return { data: url.endsWith("/agent/gap") ? { reply: "Advice" } : {} };
       },
       get: async (url, options) => {
@@ -104,18 +106,34 @@ test("Phase 1 security boundaries", async (t) => {
         { message: "hi", history: [], system: "forged" },
         { message: "hi", history: [{ role: "system", content: "forged" }] },
         { message: "hi", history: [{ role: "user", content: "ok", extra: true }] },
-        { message: "hi", history: [{ role: "assistant", content: "x".repeat(2001) }] },
+        { message: "hi", history: [{ role: "assistant", content: "x".repeat(16001) }] },
+        { message: "hi", history: [{ role: "user", content: " " }] },
         { message: "hi", history: [{ role: "system", content: "forged" }, ...Array.from({ length: 11 }, () => ({ role: "user", content: "ok" }))] }];
       for (const body of invalid) assert.equal((await chat(body)).status, 400);
     });
-    await t.test("keep last 10 items and send only explicit fields", async () => {
+    await t.test("keep all history and send only explicit fields", async () => {
       const history = Array.from({ length: 12 }, (_, i) => ({ role: "user", content: String(i) }));
+      history.unshift({ role: "user", content: 'Resume context: {"mlInsights":"Add numbers"}' });
+      history.push({ role: "assistant", content: "Advice ".repeat(500) });
       assert.equal((await chat({ message: "hi", history })).status, 200);
-      assert.deepEqual(JSON.parse(JSON.stringify(lastCall.payload)), { message: "hi", history: history.slice(-10) });
+      assert.deepEqual(JSON.parse(JSON.stringify(lastCall.payload)), { message: "hi", history });
       assert.equal(lastCall.options.headers["X-Internal-Key"], "test-only-key");
       assert.equal((await chat({ message: "😀".repeat(2000), history: [] })).status, 200);
       await fetch(`${base}/api/ml/health`);
       assert.equal(lastCall.options.headers["X-Internal-Key"], "test-only-key");
+    });
+    await t.test("quota and bad-key errors reach the client; unknown details stay private", async () => {
+      for (const message of [
+        "AI quota exhausted or rate limit reached. Try again later.",
+        "AI request rejected. Check GEMINI_API_KEY and GEMINI_MODEL configuration.",
+        "private provider detail",
+      ]) {
+        chatFailure = message;
+        const response = await chat({ message: "hi", history: [] }, "provider-errors");
+        assert.equal(response.status, 503);
+        assert.deepEqual(await response.json(), { error: message.startsWith("private") ? "Agent unavailable" : message });
+      }
+      chatFailure = undefined;
     });
     await t.test("20 chat requests per user; another user remains allowed", async () => {
       for (let i = 0; i < 20; i++) assert.equal((await chat({ message: "hi", history: [] }, "limited-user")).status, 200);

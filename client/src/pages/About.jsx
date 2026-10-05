@@ -9,7 +9,7 @@ const timeline = [
 const techStack = [
   { layer:"Frontend", items:["React.js","Tailwind CSS","Axios","jsPDF","html2canvas"],         color:"#3b6ef8" },
   { layer:"Backend",  items:["Node.js","Express.js","bcryptjs","JWT Auth","Multer","Nodemailer",],         color:"#6c63ff" },
-  { layer:"AI / NLP", items:["Python","Flask","spaCy","pdfminer","TF-IDF","scikit-learn","OpenAI API"],       color:"#0ea5c9" },
+  { layer:"AI / NLP", items:["Python","Flask","spaCy","pdfminer","TF-IDF","scikit-learn","Gemini API"],       color:"#0ea5c9" },
   { layer:"Database", items:["MongoDB Atlas","Mongoose"],                 color:"#10b981" },
 ];
 
@@ -84,7 +84,7 @@ export default function About() {
               <h3 className="text-xl font-bold mb-0.5" style={{color:"var(--text)",fontFamily:'Plus Jakarta Sans,sans-serif'}}>Avi Mishra</h3>
               <p className="text-sm font-medium mb-3" style={{color:"#3b6ef8"}}>Full Stack Developer</p>
               <p className="text-sm leading-relaxed mb-4" style={{color:"var(--text-2)"}}>
-                Built CareerCompass AI from scratch — MERN stack, Python NLP pipeline, ML-powered ATS scoring engine, and OpenAI chatbot integration.
+                Built CareerCompass AI from scratch — MERN stack, Python NLP pipeline, ML-powered ATS scoring engine, and Gemini chatbot integration.
               </p>
               <a href="https://github.com/avimishra25" target="_blank" rel="noreferrer"
                 className="btn-ghost inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm">
