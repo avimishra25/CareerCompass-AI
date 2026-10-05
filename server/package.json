@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --test security.test.js"
+    "test": "node --test security.test.js jd-match.test.js"
   },
   "keywords": [],
   "author": "",

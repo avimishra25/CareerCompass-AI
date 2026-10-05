@@ -229,6 +229,58 @@ CareerCompass-AI/
 
 ## ⚙️ Environment Variables
 
+JD matching reuses `REACT_APP_API_URL`, `ML_SERVICE_URL`, `MONGO_URI`, `JWT_SECRET`, and the shared
+`INTERNAL_API_KEY` below. It needs no new environment variables or Gemini key.
+
+### JD matching and skill gaps (Phase 3)
+
+Open **JD Match**, choose a saved analysis, and paste up to 8000 Unicode characters of job description.
+New uploads retain up to 50,000 characters of extracted resume text, excluded from history responses.
+Older analyses without saved text require re-upload; skills alone cannot reconstruct a resume.
+
+The deterministic score is `100 × (0.40 × TF-IDF cosine similarity + 0.60 × skill coverage)`.
+TF-IDF is fitted to the normalized resume/JD pair using unigrams, English stop-word removal, and
+scikit-learn's default tokenization and IDF smoothing. Coverage is matched distinct JD skills divided
+by all detected distinct JD skills. The existing normalizer and skill extractor handle aliases in both texts.
+If no JD skills are detected, coverage is zero; weights are not redistributed. Empty vocabularies have
+zero text similarity. Scores are rounded to one decimal: **Weak <50**, **Fair 50–<75**, **Strong ≥75**.
+The 60% skill weight favors explicit requirements over similar wording (40%).
+
+Matched/missing skills sort by normalized JD mention count descending, then alphabetically; extra
+resume skills sort alphabetically. Keyword gaps are the top ten JD TF-IDF terms absent from the resume,
+with alphabetical ties. No LLM or ATS regression model participates in this score.
+
+Limits: vocabulary coverage, alias rules, PDF extraction, and truncation affect results. The existing
+extractor can produce false positives; mentions and frequency do not establish proficiency, required
+versus optional skills, negation, experience level, or hiring likelihood. Tokenization can lose punctuation
+in terms such as C++. Keyword gaps are wording suggestions, not instructions to invent experience.
+
+`POST /api/jd-match` accepts `{ analysisId, jd_text, jdTitle? }` (title at most 120 characters).
+JWT authentication and analysis ownership are required; POST is limited to 20 requests/user/15 minutes.
+`GET /api/jd-match/history` and `DELETE /api/jd-match/:id` are owner scoped. Missing/foreign IDs return
+the same 404; malformed inputs return 400, overlength JDs 413, throttling 429, and unavailable ML 503.
+Records retain the JD (bounded to 8000 characters), result, title, analysis reference, and creation time.
+Deleting an analysis leaves its saved JD matches available until separately deleted.
+
+Phase 3 checks (from the repository root):
+
+```powershell
+python -m unittest discover -s ml-service -p "test_*.py"
+npm --prefix server test
+npm --prefix client test -- --watchAll=false --runInBand --runTestsByPath src/pages/JDMatch.test.jsx src/components/CareerAgent.test.jsx
+npm --prefix client run build
+```
+
+Use the ML virtual environment for Python. Scoring tests use real scikit-learn and stub spaCy's lemma
+pass; Node tests use real JWT, middleware, and schema validation with mocked MongoDB and Flask calls.
+For an integration check, start all three services and upload a PDF containing
+`Python Flask PostgreSQL Docker`. Match the same text (Strong), then
+`Figma wireframing prototyping Adobe XD user research` (Weak). Check chips, history, and Dashboard
+count/best score. Empty/whitespace JD must return 400; an 8001-character JD must return 413 via API
+(both are blocked in the UI). With another account's JWT, submit the first account's analysis ID:
+expect 404 and no saved match. Confirm foreign matches cannot be listed or deleted, and deleting an
+owned match updates its history and Dashboard stats.
+
 **Vercel (Frontend)**
 ```env
 REACT_APP_API_URL=https://your-backend-on-render.com

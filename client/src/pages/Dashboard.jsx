@@ -9,6 +9,16 @@ export default function Dashboard({ onNavigate }) {
   const { user } = useAuth();
   const [stats,   setStats]   = useState({ total: 0, topRole: null, lastAnalysis: null, avgAts: null });
   const [loading, setLoading] = useState(true);
+  const [jdStats, setJdStats] = useState(null);
+  const [jdError, setJdError] = useState("");
+
+  useEffect(() => {
+    axios.get(`${API}/api/jd-match/history`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    }).then(({ data }) => {
+      setJdStats({ count: data.length, best: data.length ? Math.max(...data.map((item) => item.result.overall_match)) : null });
+    }).catch(() => setJdError("Could not load JD match stats."));
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -124,6 +134,16 @@ export default function Dashboard({ onNavigate }) {
           </p>
         </div>
       </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        {[{ label: "JD Matches", value: jdStats?.count }, { label: "Best JD Match", value: jdStats?.best == null ? "—" : `${jdStats.best}/100` }].map(({ label, value }) => (
+          <button key={label} onClick={() => onNavigate("jd-match")} className="glass rounded-2xl p-5 text-center">
+            <p className="text-3xl font-extrabold gradient-text">{value ?? "—"}</p>
+            <p className="text-xs mt-1" style={{ color: "var(--text-3)" }}>{label}</p>
+          </button>
+        ))}
+      </div>
+      {jdError && <p role="alert" className="text-sm text-red-600">{jdError}</p>}
 
       {/* ── NEW: Progress Tracker (only renders if 2+ analyses exist) ── */}
       {!loading && stats.total >= 2 && (

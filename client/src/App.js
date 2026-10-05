@@ -10,6 +10,7 @@ import Compare      from "./pages/Compare";
 import AuthPage     from "./pages/AuthPage";
 import About        from "./pages/About";
 import Dashboard    from "./pages/Dashboard";
+import JDMatch      from "./pages/JDMatch";
 import Profile      from "./pages/Profile";
 import OAuthSuccess from "./pages/OAuthSuccess";
 
@@ -156,6 +157,7 @@ function AppInner() {
       }
 
       {currentPage === "history" && <History onNavigate={navigate} />}
+      {currentPage === "jd-match" && <JDMatch onNavigate={navigate} />}
       {currentPage === "compare" &&
         <Compare
           analysisA={compareData.analysisA}

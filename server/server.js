@@ -15,12 +15,21 @@ const { rateLimit } = require("express-rate-limit");
 const authRoutes = require("./routes/auth");
 const protect    = require("./middleware/auth");
 const Analysis   = require("./models/Analysis");
+const JDMatch    = require("./models/JDMatch");
 
 const ML_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 const app    = express();
 // Set only to the number of trusted reverse-proxy hops in this deployment.
 app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 0));
 const internalHeaders = () => ({ "X-Internal-Key": process.env.INTERNAL_API_KEY || "" });
+const jdMatchLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  keyGenerator: (req) => String(req.user._id),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many JD match requests. Try again later." },
+});
 const chatLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
@@ -153,6 +162,7 @@ app.post("/upload", protect, upload.single("resume"), async (req, res) => {
       atsScore:     ats_score,
       atsBreakdown: ats_breakdown,
       mlInsights:   ml_insights,
+      resumeText:   typeof nlpRes.data.raw_text === "string" ? nlpRes.data.raw_text.slice(0, 50000) : undefined,
     });
 
     return res.json({
@@ -204,6 +214,70 @@ app.delete("/api/history/:id", protect, async (req, res) => {
     res.json({ message: "Deleted" });
   } catch {
     res.status(500).json({ message: "Error deleting" });
+  }
+});
+
+// ─── JD matching ──────────────────────────────────────────────
+app.post("/api/jd-match", protect, jdMatchLimit, async (req, res) => {
+  const data = req.body;
+  if (!data || typeof data !== "object" || Array.isArray(data) ||
+      Object.keys(data).some((key) => !["analysisId", "jd_text", "jdTitle"].includes(key)) ||
+      typeof data.analysisId !== "string" || !/^[a-f\d]{24}$/i.test(data.analysisId) ||
+      typeof data.jd_text !== "string" || !data.jd_text.trim() ||
+      (data.jdTitle !== undefined && (typeof data.jdTitle !== "string" || data.jdTitle.length > 120))) {
+    return res.status(400).json({ error: "Invalid JD match payload" });
+  }
+  if ([...data.jd_text].length > 8000) return res.status(413).json({ error: "JD exceeds 8000 characters" });
+  try {
+    const analysis = await Analysis.findOne({ _id: data.analysisId, user: req.user._id }).select("+resumeText");
+    if (!analysis) return res.status(404).json({ error: "Analysis not found" });
+    if (!analysis.resumeText?.trim()) {
+      return res.status(400).json({ error: "This analysis has no saved resume text. Upload the resume again." });
+    }
+    let result;
+    try {
+      const response = await axios.post(`${ML_URL}/jd-match`, {
+        resume_text: analysis.resumeText, jd_text: data.jd_text,
+      }, { headers: internalHeaders(), timeout: 30000 });
+      result = response.data;
+      if (!result || !Number.isFinite(result.overall_match) || result.overall_match < 0 || result.overall_match > 100 ||
+          !["Weak", "Fair", "Strong"].includes(result.verdict) ||
+          ["matched_skills", "missing_skills", "extra_skills", "keyword_gaps"].some((key) =>
+            !Array.isArray(result[key]) || result[key].some((item) => typeof item !== "string"))) {
+        return res.status(503).json({ error: "JD matching unavailable" });
+      }
+    } catch (error) {
+      const status = [400, 413, 429].includes(error.response?.status) ? error.response.status : 503;
+      return res.status(status).json({ error: "JD matching unavailable" });
+    }
+    const match = await JDMatch.create({
+      userId: req.user._id, analysisId: analysis._id,
+      jdTitle: data.jdTitle?.trim() || "Untitled JD",
+      jdText: [...data.jd_text].slice(0, 8000).join(""), result,
+    });
+    res.status(201).json(match);
+  } catch {
+    res.status(500).json({ error: "Could not save JD match" });
+  }
+});
+
+app.get("/api/jd-match/history", protect, async (req, res) => {
+  try {
+    const matches = await JDMatch.find({ userId: req.user._id }).sort({ createdAt: -1 }).lean();
+    res.json(matches);
+  } catch {
+    res.status(500).json({ error: "Could not load JD match history" });
+  }
+});
+
+app.delete("/api/jd-match/:id", protect, async (req, res) => {
+  if (!/^[a-f\d]{24}$/i.test(req.params.id)) return res.status(400).json({ error: "Invalid match ID" });
+  try {
+    const match = await JDMatch.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
+    if (!match) return res.status(404).json({ error: "JD match not found" });
+    res.json({ message: "Deleted" });
+  } catch {
+    res.status(500).json({ error: "Could not delete JD match" });
   }
 });
 

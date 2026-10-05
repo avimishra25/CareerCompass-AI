@@ -8,6 +8,8 @@ const analysisSchema = new mongoose.Schema(
       required: true,
     },
     skills: [String],
+    // Excluded from history responses; used only for owner-authorized JD matching.
+    resumeText: { type: String, maxlength: 50000, select: false },
     bestRole: {
       role: String,
       score: Number,

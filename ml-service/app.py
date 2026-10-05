@@ -637,6 +637,60 @@ def extract_skills(raw_text):
     return list(detected)
 
 
+# Favor explicit requirements (60%) over wording (40%); neither measures hiring probability.
+JD_TEXT_WEIGHT = 0.40
+JD_SKILL_WEIGHT = 0.60
+JD_MAX_CHARS = 8000
+
+
+def compute_jd_match(resume_text, jd_text):
+    resume, jd = normalize(resume_text), normalize(jd_text)
+    resume_skills = set(extract_skills(resume_text))
+    jd_skills = set(extract_skills(jd_text))
+
+    def prominence(skill):
+        pattern = r'(?<![a-z0-9\-])' + re.escape(skill) + r'(?![a-z0-9\-])'
+        return (-len(re.findall(pattern, jd)), skill)
+
+    matched = sorted(jd_skills & resume_skills, key=prominence)
+    missing = sorted(jd_skills - resume_skills, key=prominence)
+    overlap = len(matched) / len(jd_skills) if jd_skills else 0.0
+    similarity, gaps = 0.0, []
+    vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 1))
+    # Punctuation/stop-word-only documents have no vocabulary and score zero text similarity.
+    if any(vectorizer.build_analyzer()(text) for text in (resume, jd)):
+        matrix = vectorizer.fit_transform([resume, jd])
+        similarity = float(cosine_similarity(matrix[0:1], matrix[1:2])[0, 0])
+        resume_weights, jd_weights = matrix.toarray()
+        terms = vectorizer.get_feature_names_out()
+        gaps = sorted(
+            (str(terms[i]) for i, weight in enumerate(jd_weights)
+             if weight > 0 and resume_weights[i] == 0),
+            key=lambda term: (-jd_weights[vectorizer.vocabulary_[term]], term),
+        )[:10]
+    score = round(100 * (JD_TEXT_WEIGHT * similarity + JD_SKILL_WEIGHT * overlap), 1)
+    return {
+        "overall_match": min(100, max(0, score)),
+        "matched_skills": matched,
+        "missing_skills": missing,
+        "extra_skills": sorted(resume_skills - jd_skills),
+        "keyword_gaps": gaps,
+        "verdict": "Strong" if score >= 75 else "Fair" if score >= 50 else "Weak",
+    }
+
+
+@app.route("/jd-match", methods=["POST"])
+def jd_match():
+    data = request.get_json(silent=True)
+    if (not isinstance(data, dict) or set(data) != {"resume_text", "jd_text"}
+            or any(not isinstance(data[key], str) or not data[key].strip()
+                   for key in ("resume_text", "jd_text"))):
+        return jsonify({"error": "resume_text and jd_text must be non-empty strings"}), 400
+    if len(data["jd_text"]) > JD_MAX_CHARS or len(data["resume_text"]) > 50000:
+        return jsonify({"error": "JD exceeds 8000 characters or resume exceeds 50000 characters"}), 413
+    return jsonify(compute_jd_match(data["resume_text"], data["jd_text"]))
+
+
 def rank_skills_tfidf(raw_text, detected_skills):
     if not detected_skills:
         return []
@@ -723,7 +777,7 @@ def analyze():
             "ats_score":     ats_total,
             "ats_breakdown": ats_breakdown,
             "ml_insights":   ml_insights,    # ← new field
-            "raw_text":      raw_text[:8000],
+            "raw_text":      raw_text[:50000],
         }
 
         if target_role_data:

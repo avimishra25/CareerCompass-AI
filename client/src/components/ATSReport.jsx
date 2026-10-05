@@ -16,7 +16,7 @@ function scoreLabel(n) {
 }
 
 // ─── Circular gauge ───────────────────────────────────────────
-function Gauge({ score }) {
+export function Gauge({ score }) {
   const r       = 52;
   const circ    = 2 * Math.PI * r;
   const offset  = circ - (score / 100) * circ;

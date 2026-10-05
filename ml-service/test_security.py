@@ -98,7 +98,9 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(self.http.post("/analyze", headers=self.headers).status_code, 400)
 
     def test_text_cap_and_cleanup_on_success(self):
-        self.assertEqual(self.upload().status_code, 200)
+        response = self.upload()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json["raw_text"]), 50000)
         self.assertEqual(len(self.ns["extract_skills"].call_args.args[0]), 50000)
         self.assertEqual(len(self.ns["compute_ats_score_ml"].call_args.args[0]), 50000)
         self.assertEqual(list(Path.cwd().glob("temp_*.pdf")), [])

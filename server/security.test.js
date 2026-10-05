@@ -14,6 +14,7 @@ test("Phase 1 security boundaries", async (t) => {
   process.chdir(directory);
   let app;
   let lastCall;
+  let savedAnalysis;
   let upstreamFailure = false;
   let chatFailure;
   const wrappedExpress = (...args) => {
@@ -32,7 +33,8 @@ test("Phase 1 security boundaries", async (t) => {
       req.user = { _id: req.headers["x-test-user"] || "test-user", id: "test-user" };
       next();
     },
-    "./models/Analysis": { create: async () => ({ _id: "analysis-id" }) },
+    "./models/Analysis": { create: async (data) => { savedAnalysis = data; return { _id: "analysis-id" }; } },
+    "./models/JDMatch": {},
     axios: {
       post: async (url, payload, options) => {
         lastCall = { url, payload, options };
@@ -43,7 +45,7 @@ test("Phase 1 security boundaries", async (t) => {
         }
         if (upstreamFailure) throw Object.assign(new Error("private upstream detail"), { isAxiosError: true });
         if (chatFailure && url.endsWith("/agent/gap")) throw { response: { status: 503, data: { error: chatFailure } } };
-        return { data: url.endsWith("/agent/gap") ? { reply: "Advice" } : {} };
+        return { data: url.endsWith("/agent/gap") ? { reply: "Advice" } : { raw_text: "Python Flask resume" } };
       },
       get: async (url, options) => {
         lastCall = { url, options };
@@ -91,6 +93,7 @@ test("Phase 1 security boundaries", async (t) => {
     });
     await t.test("cleanup on success and upstream failure; send internal key", async () => {
       assert.equal((await upload("%PDF-test")).status, 200);
+      assert.equal(savedAnalysis.resumeText, "Python Flask resume");
       assert.equal(lastCall.options.headers["X-Internal-Key"], "test-only-key");
       await clean();
       upstreamFailure = true;
