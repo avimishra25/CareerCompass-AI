@@ -371,152 +371,108 @@ and system roles return 400. The client resends replies without truncation.
 ## ⚙️ Local Setup
 
 ### Prerequisites
+- Node.js v18+
+- Python 3.10+
+- MongoDB Atlas account (free tier works)
+- Google Cloud Console project with OAuth 2.0 credentials
 
-- Node.js **20.19.0 or newer**, as required by the installed Mongoose 9 dependency
-- Python **3.11** for the commands below; the Docker image uses Python 3.10
-- A running local MongoDB server or a reachable MongoDB Atlas database
-- Google OAuth credentials for the existing sign-in flow
-- A Gemini API key only if you want career chat; resume analysis and JD matching do not call Gemini
-
-The pinned spaCy 3.7.5, scikit-learn 1.4.2, and NumPy 1.26.4 stack predates Python 3.14.
-Use Python 3.11 for local setup instead of creating the environment with whichever `python` is on PATH.
-
-### 1. Clone and install Node dependencies
-
-Run in PowerShell:
-
-```powershell
-git clone https://github.com/avimishra25/CareerCompass-AI.git
-cd CareerCompass-AI
-npm --prefix server install
-npm --prefix client install
-```
-
-For an existing checkout, open PowerShell in the repository root and run only the two install commands.
-The Windows commands below all start from that root unless stated otherwise.
-
-### 2. Create the ML virtual environment
-
-Check the Python launcher first:
-
-```powershell
-py -3.11 --version
-```
-
-If Python 3.11 is missing, install it, then reopen PowerShell:
-
-```powershell
-winget install --exact --id Python.Python.3.11
-```
-
-Create the environment and install the pinned packages and language model:
-
-```powershell
-py -3.11 -m venv ml-service/venv
-.\ml-service\venv\Scripts\python.exe -m pip install -r ml-service/requirements.txt
-.\ml-service\venv\Scripts\python.exe -m spacy download en_core_web_sm
-```
-
-These commands use the environment's executable directly, so PowerShell activation is unnecessary.
-Virtual environments are machine-specific. If an old environment reports **Unable to create process**,
-its base Python installation may have been removed or moved. Preserve anything needed from it, then
-recreate it using the installed Python 3.11 interpreter and reinstall the requirements.
-
-On macOS/Linux, with Python 3.11 installed, use:
+### 1. Clone Repository
 
 ```bash
-python3.11 -m venv ml-service/venv
-./ml-service/venv/bin/python -m pip install -r ml-service/requirements.txt
-./ml-service/venv/bin/python -m spacy download en_core_web_sm
+git clone https://github.com/avimishra25/CareerCompass-AI.git
+cd CareerCompass-AI
 ```
 
-### 3. Configure local environment files
+### 2. Backend Setup
 
-Create the files below if absent; update existing values without overwriting unrelated settings.
-`server/.env.example` and `ml-service/.env.example` provide starting values. Add the OAuth settings
-shown here to the server configuration for the existing sign-in flow.
-
-Generate two separate random values, one for `JWT_SECRET` and one for `INTERNAL_API_KEY`:
-
-```powershell
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```bash
+cd server
+npm install
 ```
 
-**`server/.env`**
+Create `.env` inside `/server`:
 
-```dotenv
-MONGO_URI=mongodb://127.0.0.1:27017/careercompass
-JWT_SECRET=<first-generated-value>
+```env
+MONGO_URI=mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/careercompass
+JWT_SECRET=your_secret_key_here
 PORT=5000
 ML_SERVICE_URL=http://localhost:8000
-INTERNAL_API_KEY=<second-generated-value>
-TRUST_PROXY_HOPS=0
-GOOGLE_CLIENT_ID=<your-google-client-id>
-GOOGLE_CLIENT_SECRET=<your-google-client-secret>
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
 GOOGLE_CALLBACK_URL=http://localhost:5000/api/auth/google/callback
 CLIENT_URL=http://localhost:3000
+INTERNAL_API_KEY=replace_with_shared_random_secret
+TRUST_PROXY_HOPS=0
 ```
 
-Replace `MONGO_URI` with your Atlas URI if using Atlas. Starting Node does not start MongoDB.
-Replace all angle-bracket placeholders with your own values.
-
-**`ml-service/.env`**
-
-```dotenv
-INTERNAL_API_KEY=<same-second-generated-value>
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.5-flash-lite
+```bash
+node server.js
+# ✅ MongoDB connected
+# Server running on http://localhost:5000
 ```
 
-Set `GEMINI_API_KEY` to enable chat. Leave it blank when testing only resume analysis or JD matching.
-The `INTERNAL_API_KEY` values must match exactly between Node and Flask.
+### 3. Frontend Setup
 
-**`client/.env`**
+```bash
+cd client
+npm install
+```
 
-```dotenv
+Create `.env` inside `/client`:
+
+```env
 REACT_APP_API_URL=http://localhost:5000
 ```
 
-Restart the relevant service after changing environment variables. Never put service secrets in the client.
-
-### 4. Run all three services
-
-Open three PowerShell terminals at the repository root and keep each running.
-
-**Terminal 1 — Flask**
-
-```powershell
-cd ml-service
-.\venv\Scripts\python.exe app.py
-```
-
-**Terminal 2 — Node**
-
-```powershell
-cd server
-node server.js
-```
-
-**Terminal 3 — React**
-
-```powershell
-cd client
+```bash
 npm start
+# App runs at http://localhost:3000
 ```
 
-On macOS/Linux, start Flask with `./venv/bin/python app.py` from `ml-service`; Node and React commands
-are unchanged. Flask loads or trains the ATS model during startup.
+### 4. ML Service Setup
 
-Open [http://localhost:3000](http://localhost:3000). Node runs on port 5000; Flask runs on port 8000.
-Check Flask with `Invoke-RestMethod http://localhost:8000/health` in PowerShell. Sign in, upload a fresh
-PDF resume, then choose **JD Match**. Analyses created before resume-text storage require re-upload.
+```bash
+cd ml-service
+python -m venv venv
 
-### Existing Google OAuth setup (local)
+# Windows
+venv\Scripts\activate
+# macOS / Linux
+source venv/bin/activate
 
-Configure a web OAuth client in [Google Cloud Console](https://console.cloud.google.com) with
-`http://localhost:5000/api/auth/google/callback` as an authorized redirect URI. Supply its credentials
-in `server/.env` and ensure your account is allowed to use the OAuth app while it is in testing.
+pip install -r requirements.txt
+python -m spacy download en_core_web_sm
+```
+
+Create `.env` inside `/ml-service`:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-3.5-flash-lite
+INTERNAL_API_KEY=replace_with_shared_random_secret
+```
+
+```bash
+python app.py
+# 🤖 Training ATS model on synthetic data...
+# ✅ Model trained
+# Server running on http://localhost:8000
+```
+
+### Running All Three Services
+
+| Terminal | Command | Port |
+|---|---|---|
+| 1 — ML Service | `python app.py` (ml-service, venv active) | 8000 |
+| 2 — Backend | `node server.js` (server/) | 5000 |
+| 3 — Frontend | `npm start` (client/) | 3000 |
+
+### Google OAuth Setup (Local)
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com) → APIs & Services → Credentials
+2. Create OAuth 2.0 Client ID (Web application)
+3. Add `http://localhost:5000/api/auth/google/callback` to Authorized redirect URIs
+4. Add your email as a test user under APIs & Services → OAuth consent screen → Audience
 
 ---
 
