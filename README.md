@@ -64,6 +64,14 @@ The ATS model trains on 600 synthetic feature samples across three quality tiers
 - Each week has an objective, 2–3 free resources, and a mini-project that extends a project from your resume when one is found
 - Track status per milestone (Upcoming → In progress → Completed); uploading a new resume that shows a skill marks its milestones complete
 
+### 📝 AI Resume Builder
+- Section-by-section editor (contact, summary, skills, projects, experience, education, certifications, achievements) with completion ticks
+- Write rough notes and **Enhance with AI** to get 2–4 action-verb bullets; Accept, Edit, Regenerate, or Discard
+- Guardrail: a suggestion containing any number that is not in your notes or title is rejected and regenerated once
+- Live ATS score (same ML model as resume analysis) recalculated about 800 ms after you stop editing
+- Single-column, serif, ATS-friendly preview; import grouped skills and summary from your latest analysis
+- Save up to 20 drafts and export an A4 PDF with selectable text
+
 ### 💬 AI Career Chatbot
 - Google Gemini powered career advisor
 - Full validated conversation history and resume ML insights retained per request
@@ -165,6 +173,12 @@ known resume skills, and saved resume text to Flask `/roadmap`. Flask orders the
 `llm.py`, JSON mode) for the milestones, validates them, and returns them; Node validates again, saves a
 `CareerRoadmap`, and returns it.
 
+Resume builder: React sends notes to Node `/api/resume-builder/enhance`; Node validates and forwards
+`{ section, title, notes, tone }` to Flask `/resume/enhance`, which calls Gemini through `llm.py` and checks the
+bullets before returning them. As you edit, React sends the resume's plain text to `/api/resume-builder/score`;
+Flask scores it with the same `extract_skills` + `compute_ats_score_ml` pipeline as `/analyze`. Drafts are stored
+in MongoDB (`ResumeDraft`) only when you click Save draft.
+
 ---
 
 ## 🔐 Authentication Flow
@@ -236,13 +250,15 @@ CareerCompass-AI/
 │   │   ├── components/             # Navbar, ATSReport, CareerAgent, ProgressTracker
 │   │   ├── context/                # AuthContext (JWT session management)
 │   │   ├── constants/              # targetRoles (the 12 roles shared by Analyze and Roadmap)
+│   │   ├── utils/                  # resumeDraft (draft shape, plain text), resumePdf (A4 export)
 │   │   ├── pages/                  # AuthPage, OAuthSuccess, UploadResume, History, Dashboard,
-│   │   │                           # JDMatch, Roadmap, About, Compare, Profile
+│   │   │                           # JDMatch, Roadmap, ResumeBuilder, About, Compare, Profile
 │   │   └── App.js
 ├── server/                         # Node.js backend
 │   ├── config/                     # passport.js (Google OAuth strategy)
 │   ├── middleware/                 # JWT auth middleware
-│   ├── models/                     # User, Analysis (+ resumeText), JDMatch, CareerRoadmap
+│   ├── lib/                        # resumeBuilder.js (draft limits/validation, skill grouping)
+│   ├── models/                     # User, Analysis (+ resumeText), JDMatch, CareerRoadmap, ResumeDraft
 │   ├── routes/                     # auth.js (Google OAuth, /me)
 │   ├── server.js
 │   └── .env
@@ -250,6 +266,7 @@ CareerCompass-AI/
     ├── app.py                      # Flask, spaCy, TF-IDF, GBR, Gemini
     ├── llm.py                      # Swappable text-generation provider
     ├── roadmap.py                  # Gap ordering + roadmap response validation
+    ├── resume_builder.py           # Notes → bullets prompt + number-hallucination guard
     ├── requirements.txt
     └── .env
 ```
@@ -328,6 +345,53 @@ It returns `{ covered, message, skill_gaps, milestones }`. Roadmaps are saved in
 records (`userId`, `analysisId`, optional `jdMatchId`, `targetRole`, `hoursPerWeek`, `skillGaps`, `covered`,
 `milestones` with `status`).
 No new environment variables are needed: generation uses the ML service's existing `GEMINI_API_KEY`.
+
+## 📝 AI Resume Builder: Rules and Limits
+
+**Enhance with AI** rewrites your notes for an experience, project, or summary into 2–4 items (bullets that
+start with an action verb from the ATS model's `ACTION_VERBS` list, or summary sentences), in a Professional
+or Concise tone. The server-owned prompt forbids inventing employers, technologies, metrics, or experience.
+Flask then enforces what it can check deterministically:
+- 2–4 non-blank strings, each at most 220 characters (leading bullet symbols are stripped)
+- **every number in a suggestion must appear in your notes or title** (`2,000` and `2000` count as the same).
+  This rejects invented metrics, years, and version numbers (such as `HTML5` when you wrote `html`).
+  Inflation that reuses your number (`300+` from `around 300`) passes this check; only the prompt forbids it.
+
+A response that fails these checks is retried once; after that, Flask returns 502 `AI returned an invalid
+suggestion. Try again.` (`llm.py` separately repairs malformed JSON once, so one click can make up to four SDK
+requests.) Invented technologies or claims without numbers cannot be detected automatically, so read every
+suggestion before accepting it.
+
+**Live ATS score** uses the same feature extraction and GradientBoostingRegressor as PDF analysis, on the
+builder's plain-text rendering (standard headings, one column), about 800 ms after edits stop. It is the same
+heuristic score described above, not a prediction of any employer's ATS.
+
+**Import from latest analysis** fills the Skills section with your latest analysis's detected skills, grouped
+(Languages, Frontend, Backend, Databases, Cloud & DevOps, Data & AI, …), and fills an empty Summary with the
+resume's own Summary/Objective/Profile section. If the resume has none, it writes a one-line factual summary
+from the target role and detected skills. An existing summary is never overwritten.
+
+**Export PDF** draws A4 pages with jsPDF's text API rather than an html2canvas screenshot, so the text stays
+selectable and readable by ATS parsers. The built-in Times font covers Latin-1 characters only; symbols such as
+₹ or emoji will not render.
+
+API (all JWT-protected; drafts are owner-scoped and another user's drafts return 404; malformed IDs return 400):
+- `GET /api/resume-builder/drafts` lists your drafts (title, template, atsScore, timestamps). `POST` creates one
+  and returns 201. Each user can keep up to 20 drafts; a 21st returns 409.
+- `GET` / `PUT` / `DELETE /api/resume-builder/drafts/:id`. `PUT` replaces the whole draft.
+- `POST /api/resume-builder/enhance` `{ section: experience|project|summary, title ≤120, notes ≤1500, tone: professional|concise }`
+  returns `{ bullets }`. It is limited to 30 requests/user/15 minutes.
+- `POST /api/resume-builder/score` `{ text ≤50000 }` returns `{ atsScore, atsBreakdown, mlInsights }`.
+  It is limited to 120 requests/user/15 minutes.
+- `POST /api/resume-builder/import` `{ analysisId }` returns `{ sections: { summary, skills }, summarySource, resumeName }`.
+
+Draft bodies are validated strictly: unknown fields or wrong types return 400, and over-limit values return 413.
+The limits are: title 120; name 100; email 254; phone 40; up to 5 links of 200; summary 1500; up to 10 skill groups
+of 30 skills (60 characters each); up to 10 experience and 10 project entries with up to 8 bullets of 300
+characters (projects also take up to 15 tech tags); up to 6 education entries; and up to 20 certifications and
+20 achievements of 300 characters. `template` accepts only `classic` (Classic ATS). The internal Flask routes
+`POST /resume/enhance` and `POST /resume/score` require `X-Internal-Key` and apply the same input limits.
+No new environment variables are needed.
 
 ### Tests and manual checks
 
@@ -409,7 +473,8 @@ Node sends the key on every Flask request. Copy `server/.env.example` and `ml-se
 Verify the proxy topology before changing it, since it controls the IP used for rate limiting.
 
 Security limits: `/api` permits 300 requests per 15 minutes per IP; authenticated chat permits 20 per user per 15 minutes;
-roadmap generation permits 10 per user per 15 minutes.
+roadmap generation permits 10 per user per 15 minutes; resume-builder AI suggestions permit 30, and live scoring 120,
+per user per 15 minutes.
 These counters are in memory per Node process and reset on restart; multiple replicas require a shared store.
 Uploads require one PDF, PDF MIME type, `.pdf` extension, and `%PDF-` signature; Node limits file size to 5 MiB.
 Flask limits the entire request (including multipart overhead) to 5 MiB and uses at most 50,000 extracted characters.
@@ -546,7 +611,6 @@ Retrain when you change `extract_features()`, update training data tiers, or add
 
 - Real job listing integration (LinkedIn, Indeed API)
 - Per-role ML models (separate model per job category)
-- Resume builder with inline AI suggestions
 
 ---
 

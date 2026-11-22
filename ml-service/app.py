@@ -20,6 +20,8 @@ from sklearn.model_selection import train_test_split
 from llm import generate, LLMError
 from roadmap import (RoadmapInputError, RoadmapOutputError, ROADMAP_INVALID_MESSAGE,
                      parse_roadmap_request, generate_roadmap)
+from resume_builder import (ResumeInputError, ResumeOutputError, ENHANCE_INVALID_MESSAGE,
+                            parse_enhance_request, enhance_bullets)
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -854,6 +856,39 @@ def career_roadmap():
     except Exception:
         app.logger.exception("Roadmap request failed")
         return jsonify({"error": "Roadmap generation unavailable"}), 503
+
+
+@app.route("/resume/enhance", methods=["POST"])
+def resume_enhance():
+    try:
+        payload = parse_enhance_request(request.get_json(silent=True))
+    except ResumeInputError as error:
+        return jsonify({"error": str(error)}), error.status
+    try:
+        return jsonify({"bullets": enhance_bullets(payload, generate, ACTION_VERBS)})
+    except ResumeOutputError:
+        return jsonify({"error": ENHANCE_INVALID_MESSAGE}), 502
+    except LLMError as error:
+        if str(error) == "AI returned invalid JSON after one retry.":
+            return jsonify({"error": ENHANCE_INVALID_MESSAGE}), 502
+        return jsonify({"error": str(error)}), 503
+    except Exception:
+        app.logger.exception("Resume enhance failed")
+        return jsonify({"error": "Resume enhancement unavailable"}), 503
+
+
+@app.route("/resume/score", methods=["POST"])
+def resume_score():
+    """Score builder text with the same pipeline as /analyze, minus PDF extraction."""
+    data = request.get_json(silent=True)
+    if (not isinstance(data, dict) or set(data) != {"text"}
+            or not isinstance(data["text"], str) or not data["text"].strip()):
+        return jsonify({"error": "text must be a non-empty string"}), 400
+    if len(data["text"]) > 50000:
+        return jsonify({"error": "Text exceeds 50000 characters"}), 413
+    text = data["text"]
+    ats_total, ats_breakdown, ml_insights = compute_ats_score_ml(text, extract_skills(text))
+    return jsonify({"ats_score": ats_total, "ats_breakdown": ats_breakdown, "ml_insights": ml_insights})
 
 
 @app.route("/retrain", methods=["POST"])

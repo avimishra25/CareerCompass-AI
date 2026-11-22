@@ -44,12 +44,13 @@ export default function Navbar({ onNavigate, currentPage }) {
         </button>
 
         {/* Desktop Nav */}
-        <div className="hidden md:flex items-center gap-7">
+        <div className="hidden lg:flex items-center gap-6">
           {user && link("dashboard", "Dashboard")}
           {user && link("analyze",   "Analyze"  )}
           {user && link("history",   "History"  )}
           {user && link("jd-match", "JD Match")}
           {user && link("roadmap", "Roadmap")}
+          {user && link("resume-builder", "Resume Builder")}
           {link("about", "About")}
 
           {user ? (
@@ -99,7 +100,7 @@ export default function Navbar({ onNavigate, currentPage }) {
 
         {/* Mobile hamburger */}
         <button
-          className="md:hidden p-2 rounded-lg transition"
+          className="lg:hidden p-2 rounded-lg transition"
           style={{
             color: "var(--text-2)",
             background: menuOpen ? "rgba(59,110,248,0.08)" : "transparent",
@@ -115,12 +116,13 @@ export default function Navbar({ onNavigate, currentPage }) {
 
       {/* Mobile dropdown */}
       {menuOpen && (
-        <div className="md:hidden mt-3 mx-2 mb-2 glass rounded-2xl p-4 flex flex-col gap-3">
+        <div className="lg:hidden mt-3 mx-2 mb-2 glass rounded-2xl p-4 flex flex-col gap-3">
           {user && link("dashboard", "Dashboard")}
           {user && link("analyze",   "Analyze"  )}
           {user && link("history",   "History"  )}
           {user && link("jd-match", "JD Match")}
           {user && link("roadmap", "Roadmap")}
+          {user && link("resume-builder", "Resume Builder")}
           {link("about", "About")}
           {user && link("profile",   "Profile"  )}  {/* ← ADD THIS */}
           {user && (

@@ -17,6 +17,8 @@ const protect    = require("./middleware/auth");
 const Analysis   = require("./models/Analysis");
 const JDMatch    = require("./models/JDMatch");
 const CareerRoadmap = require("./models/CareerRoadmap");
+const ResumeDraft = require("./models/ResumeDraft");
+const { LIMITS: RESUME_LIMITS, DraftError, parseDraft, enhanceError, groupSkills, extractSummary } = require("./lib/resumeBuilder");
 
 const ML_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 const app    = express();
@@ -47,6 +49,23 @@ const roadmapLimit = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many roadmap requests. Try again later." },
 });
+const enhanceLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  keyGenerator: (req) => String(req.user._id),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many AI suggestions. Try again later." },
+});
+// The builder rescores after edits (debounced); this caps ML load per user.
+const resumeScoreLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 120,
+  keyGenerator: (req) => String(req.user._id),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Live scoring paused. Try again in a few minutes." },
+});
 const isObjectId = (value) => typeof value === "string" && /^[a-f\d]{24}$/i.test(value);
 // Known-safe ML service messages that may reach the browser; anything else is replaced.
 const SAFE_AI_ERRORS = [
@@ -57,6 +76,7 @@ const SAFE_AI_ERRORS = [
   "AI returned no text. Try rephrasing your request.",
   "AI returned invalid JSON after one retry.",
   "AI returned an invalid roadmap. Try again.",
+  "AI returned an invalid suggestion. Try again.",
 ];
 // Must match ROLE_DEFINITIONS in ml-service/app.py (the roles stored in Analysis.match).
 const ROADMAP_ROLES = [
@@ -466,6 +486,150 @@ app.patch("/api/roadmap/:id/milestone/:mid", protect, async (req, res) => {
     res.json(roadmap);
   } catch {
     res.status(500).json({ error: "Could not update milestone" });
+  }
+});
+
+// ─── AI Resume Builder ────────────────────────────────────────
+const DRAFT_LIST_FIELDS = "title template atsScore createdAt updatedAt";
+
+app.get("/api/resume-builder/drafts", protect, async (req, res) => {
+  try {
+    const drafts = await ResumeDraft.find({ userId: req.user._id }).select(DRAFT_LIST_FIELDS).sort({ updatedAt: -1 }).lean();
+    res.json(drafts);
+  } catch {
+    res.status(500).json({ error: "Could not load drafts" });
+  }
+});
+
+app.post("/api/resume-builder/drafts", protect, async (req, res) => {
+  let draft;
+  try {
+    draft = parseDraft(req.body);
+  } catch (error) {
+    if (error instanceof DraftError) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
+  try {
+    if (await ResumeDraft.countDocuments({ userId: req.user._id }) >= RESUME_LIMITS.drafts) {
+      return res.status(409).json({ error: `You can keep up to ${RESUME_LIMITS.drafts} drafts. Delete one first.` });
+    }
+    const saved = await ResumeDraft.create({ ...draft, userId: req.user._id });
+    res.status(201).json(saved);
+  } catch {
+    res.status(500).json({ error: "Could not save draft" });
+  }
+});
+
+app.get("/api/resume-builder/drafts/:id", protect, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(400).json({ error: "Invalid draft ID" });
+  try {
+    const draft = await ResumeDraft.findOne({ _id: req.params.id, userId: req.user._id }).lean();
+    if (!draft) return res.status(404).json({ error: "Draft not found" });
+    res.json(draft);
+  } catch {
+    res.status(500).json({ error: "Could not load draft" });
+  }
+});
+
+app.put("/api/resume-builder/drafts/:id", protect, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(400).json({ error: "Invalid draft ID" });
+  let draft;
+  try {
+    draft = parseDraft(req.body);
+  } catch (error) {
+    if (error instanceof DraftError) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
+  try {
+    const saved = await ResumeDraft.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user._id },
+      { $set: draft },
+      { returnDocument: "after", runValidators: true },
+    ).lean();
+    if (!saved) return res.status(404).json({ error: "Draft not found" });
+    res.json(saved);
+  } catch {
+    res.status(500).json({ error: "Could not save draft" });
+  }
+});
+
+app.delete("/api/resume-builder/drafts/:id", protect, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(400).json({ error: "Invalid draft ID" });
+  try {
+    const draft = await ResumeDraft.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
+    if (!draft) return res.status(404).json({ error: "Draft not found" });
+    res.json({ message: "Deleted" });
+  } catch {
+    res.status(500).json({ error: "Could not delete draft" });
+  }
+});
+
+app.post("/api/resume-builder/enhance", protect, enhanceLimit, async (req, res) => {
+  const invalid = enhanceError(req.body);
+  if (invalid) return res.status(invalid).json({ error: invalid === 413 ? "Notes exceed 1500 or title 120 characters" : "Invalid enhance payload" });
+  const { section, title, notes, tone } = req.body;
+  try {
+    const response = await axios.post(`${ML_URL}/resume/enhance`, { section, title, notes, tone }, {
+      headers: internalHeaders(), timeout: 60000,
+    });
+    const bullets = response.data?.bullets;
+    if (!Array.isArray(bullets) || bullets.length < 2 || bullets.length > 4 ||
+        bullets.some((bullet) => !boundedText(bullet, 220))) {
+      return res.status(503).json({ error: "Resume enhancement unavailable" });
+    }
+    res.json({ bullets: [...bullets] });
+  } catch (error) {
+    const status = [400, 413, 429, 502].includes(error.response?.status) ? error.response.status : 503;
+    const message = error.response?.data?.error;
+    res.status(status).json({ error: SAFE_AI_ERRORS.includes(message) ? message : "Resume enhancement unavailable" });
+  }
+});
+
+app.post("/api/resume-builder/score", protect, resumeScoreLimit, async (req, res) => {
+  const data = req.body;
+  if (!data || typeof data !== "object" || Array.isArray(data) || Object.keys(data).length !== 1 ||
+      typeof data.text !== "string" || !data.text.trim()) {
+    return res.status(400).json({ error: "Invalid score payload" });
+  }
+  if ([...data.text].length > 50000) return res.status(413).json({ error: "Resume text exceeds 50000 characters" });
+  try {
+    const response = await axios.post(`${ML_URL}/resume/score`, { text: data.text }, {
+      headers: internalHeaders(), timeout: 30000,
+    });
+    const { ats_score: atsScore, ats_breakdown: atsBreakdown, ml_insights: mlInsights } = response.data || {};
+    if (!Number.isInteger(atsScore) || atsScore < 0 || atsScore > 100 ||
+        !atsBreakdown || typeof atsBreakdown !== "object" || Object.values(atsBreakdown).some((item) =>
+          !item || !Number.isFinite(item.score) || !Number.isFinite(item.max) || typeof item.label !== "string")) {
+      return res.status(503).json({ error: "Scoring unavailable" });
+    }
+    res.json({ atsScore, atsBreakdown, mlInsights: mlInsights ?? null });
+  } catch (error) {
+    const status = [400, 413, 429].includes(error.response?.status) ? error.response.status : 503;
+    res.status(status).json({ error: "Scoring unavailable" });
+  }
+});
+
+app.post("/api/resume-builder/import", protect, async (req, res) => {
+  const data = req.body;
+  if (!data || typeof data !== "object" || Array.isArray(data) || Object.keys(data).length !== 1 || !isObjectId(data.analysisId)) {
+    return res.status(400).json({ error: "Invalid import payload" });
+  }
+  try {
+    const analysis = await Analysis.findOne({ _id: data.analysisId, user: req.user._id }).select("+resumeText");
+    if (!analysis) return res.status(404).json({ error: "Analysis not found" });
+    const skills = groupSkills(analysis.skills ? [...analysis.skills] : []).slice(0, RESUME_LIMITS.skillGroups);
+    let summary = extractSummary(analysis.resumeText);
+    let summarySource = "resume";
+    if (!summary) {
+      // Built only from analysis facts (role + detected skills), never invented experience.
+      const role = analysis.targetRole || analysis.bestRole?.role;
+      const top = skills.flatMap((group) => group.items).slice(0, 5);
+      summary = role && top.length ? `Candidate targeting ${role} roles, with skills in ${top.join(", ")}.` : "";
+      summarySource = summary ? "analysis" : "none";
+    }
+    res.json({ analysisId: analysis._id, resumeName: analysis.resumeName, summarySource, sections: { summary, skills } });
+  } catch {
+    res.status(500).json({ error: "Could not import analysis" });
   }
 });
 

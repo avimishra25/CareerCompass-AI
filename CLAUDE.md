@@ -64,7 +64,8 @@ Test layout gotchas:
 - **Node tests** (`server/security.test.js`, `server/jd-match.test.js`) run `server.js` inside a `vm` context. External modules (`express`, `mongoose`, `axios`, the models, `protect`) are replaced with mocks, and the HTTP behaviour is exercised with real Express, multer and rate-limit middleware. A new `require` in `server.js` or a new model needs a matching mock in those tests. The `npm test` script lists test files explicitly (`node --test security.test.js jd-match.test.js`), so a new test file must be added to `server/package.json`.
 - **ML tests** (`ml-service/test_*.py`) avoid loading spaCy and Gemini. `test_security.py` extracts route functions from `app.py` with `ast` and stubs the heavy dependencies, and `test_llm.py` mocks the SDK. Keep new routes loadable that way and mock `llm.generate` instead of calling Gemini.
 - **Client tests** use Testing Library with mocked axios (`App.test.js`, `CareerAgent.test.jsx`, `JDMatch.test.jsx`, `Roadmap.test.jsx`). `setupTests.js` polyfills `TextEncoder`, which jsPDF needs at import time.
-- **ML modules with LLM logic** (for example `roadmap.py`) take `generate` as a parameter and avoid importing spaCy, so they can be unit tested directly with a fake LLM.
+- **Large nested request bodies** (resume drafts) use a validator module shared with the Mongoose schema (`server/lib/resumeBuilder.js`), so the limits are defined once.
+- **ML modules with LLM logic** (for example `roadmap.py` and `resume_builder.py`) take `generate` as a parameter and avoid importing spaCy, so they can be unit tested directly with a fake LLM.
 - Express routes run inside a `vm` context in the Node tests, so objects they build have other-realm prototypes. Compare them with `JSON.stringify` rather than `assert.deepEqual`.
 
 ## Backend conventions (already used in the code; follow them)
@@ -73,7 +74,7 @@ Test layout gotchas:
 - Every route that touches user data uses the `protect` middleware (Bearer JWT, loads `req.user`). `/` and the OAuth routes are the only public ones, and `/api/auth/me` verifies the token itself.
 - Scope every query to the caller: `Model.find({ userId: req.user._id })`, `findOneAndDelete({ _id, user: req.user._id })`. Never query by ID alone.
 - A missing ID and another user's ID return the same 404, so ownership cannot be probed. A malformed ObjectId returns 400 (`/^[a-f\d]{24}$/i`) before any DB call. `DELETE /api/jd-match/:id` does this. The older `DELETE /api/history/:id` doesn't, so don't copy it.
-- Expensive routes get a per-user `express-rate-limit` (`keyGenerator: (req) => String(req.user._id)`, 20 requests per 15 minutes). Place it after `protect` so `req.user` exists. See `jdMatchLimit`, `chatLimit` and `roadmapLimit` (10 requests). All of `/api` also has a 300 per 15 minutes per-IP limiter. `/upload` sits outside `/api` and has neither limiter today, which is a known gap, so don't copy it. Counters are in memory per process.
+- Expensive routes get a per-user `express-rate-limit` (`keyGenerator: (req) => String(req.user._id)`, 20 requests per 15 minutes). Place it after `protect` so `req.user` exists. See `jdMatchLimit`, `chatLimit`, `roadmapLimit` (10 requests), `enhanceLimit` (30) and `resumeScoreLimit` (120). All of `/api` also has a 300 per 15 minutes per-IP limiter. `/upload` sits outside `/api` and has neither limiter today, which is a known gap, so don't copy it. Counters are in memory per process.
 - Request bodies are validated by hand and strictly:
   - Reject non-objects and arrays.
   - Reject unknown keys with a whitelist.
@@ -127,6 +128,6 @@ Not built yet. Each needs its own phase, so don't start one unless asked. They s
 | Module | Reference design | Notes |
 |---|---|---|
 | Career Roadmap | `docs/ui-reference/roadmap.html` | **Built.** `ml-service/roadmap.py` + Flask `/roadmap`, `server/models/CareerRoadmap.js` + `/api/roadmap*` routes, `client/src/pages/Roadmap.jsx`. Use it as the template for the other modules. |
-| AI Resume Builder | `docs/ui-reference/builder.html` | Resume editing with AI suggestions. |
+| AI Resume Builder | `docs/ui-reference/builder.html` | **Built.** `ml-service/resume_builder.py` + Flask `/resume/enhance` and `/resume/score`, `server/lib/resumeBuilder.js` (shared draft limits/validation) + `server/models/ResumeDraft.js` + `/api/resume-builder/*`, `client/src/pages/ResumeBuilder.jsx` with `client/src/utils/resumeDraft.js` and `resumePdf.js`. |
 | Job & Internship Recommendations | `docs/ui-reference/jobs.html` | Matching listings to the user's analyzed skills. |
 | Interview Prep with AI Feedback | `docs/ui-reference/interview.html` | Practice questions with AI-generated feedback on answers. |
