@@ -18,6 +18,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
 from llm import generate, LLMError
+from roadmap import (RoadmapInputError, RoadmapOutputError, ROADMAP_INVALID_MESSAGE,
+                     parse_roadmap_request, generate_roadmap)
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -832,6 +834,26 @@ Keep replies under 2000 characters."""
     except Exception:
         app.logger.exception("Agent request failed")
         return jsonify({"error": "Agent unavailable"}), 503
+
+
+@app.route("/roadmap", methods=["POST"])
+def career_roadmap():
+    try:
+        payload = parse_roadmap_request(request.get_json(silent=True))
+    except RoadmapInputError as error:
+        return jsonify({"error": str(error)}), error.status
+    try:
+        return jsonify(generate_roadmap(payload, generate))
+    except RoadmapOutputError:
+        return jsonify({"error": ROADMAP_INVALID_MESSAGE}), 502
+    except LLMError as error:
+        # llm.generate already retried malformed JSON once; report it as a bad upstream response.
+        if str(error) == "AI returned invalid JSON after one retry.":
+            return jsonify({"error": ROADMAP_INVALID_MESSAGE}), 502
+        return jsonify({"error": str(error)}), 503
+    except Exception:
+        app.logger.exception("Roadmap request failed")
+        return jsonify({"error": "Roadmap generation unavailable"}), 503
 
 
 @app.route("/retrain", methods=["POST"])

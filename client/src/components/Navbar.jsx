@@ -49,6 +49,7 @@ export default function Navbar({ onNavigate, currentPage }) {
           {user && link("analyze",   "Analyze"  )}
           {user && link("history",   "History"  )}
           {user && link("jd-match", "JD Match")}
+          {user && link("roadmap", "Roadmap")}
           {link("about", "About")}
 
           {user ? (
@@ -119,6 +120,7 @@ export default function Navbar({ onNavigate, currentPage }) {
           {user && link("analyze",   "Analyze"  )}
           {user && link("history",   "History"  )}
           {user && link("jd-match", "JD Match")}
+          {user && link("roadmap", "Roadmap")}
           {link("about", "About")}
           {user && link("profile",   "Profile"  )}  {/* ← ADD THIS */}
           {user && (

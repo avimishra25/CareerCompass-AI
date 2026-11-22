@@ -66,7 +66,7 @@ class SecurityTests(unittest.TestCase):
         return self.http.post("/agent/gap", headers=self.headers, json=data)
 
     def test_key_required_everywhere_except_health(self):
-        for endpoint in ["/analyze", "/agent/gap", "/retrain", "/unknown"]:
+        for endpoint in ["/analyze", "/agent/gap", "/retrain", "/roadmap", "/unknown"]:
             for headers in [{}, {"X-Internal-Key": "wrong"}]:
                 response = self.http.post(endpoint, headers=headers)
                 self.assertEqual(response.status_code, 401)

@@ -57,6 +57,13 @@ The ATS model trains on 600 synthetic feature samples across three quality tiers
 - Saved match history with owner-only access and deletion
 - Older analyses without saved resume text require a fresh upload
 
+### 🗺️ Career Roadmap
+- Week-by-week learning plan (6 weeks by default, from 2–40 hours per week) for one of the 12 target roles
+- Gaps = the role's missing skills from a saved analysis, plus missing skills from an optional saved JD match, minus skills already on the resume
+- Prerequisites come first (e.g. JavaScript → TypeScript, Docker → Kubernetes, Python → pandas → scikit-learn)
+- Each week has an objective, 2–3 free resources, and a mini-project that extends a project from your resume when one is found
+- Track status per milestone (Upcoming → In progress → Completed); uploading a new resume that shows a skill marks its milestones complete
+
 ### 💬 AI Career Chatbot
 - Google Gemini powered career advisor
 - Full validated conversation history and resume ML insights retained per request
@@ -152,6 +159,12 @@ Node validates the JWT, rate limit, payload, and analysis ownership, then sends 
 and JD to Flask with `X-Internal-Key`. Flask returns deterministic results; Node saves a `JDMatch`
 record and returns it to the page. Resume text is excluded from normal analysis-history responses.
 
+Career roadmap: React sends `analysisId`, `hoursPerWeek`, and optional `targetRole` / `jdMatchId` to Node.
+Node checks ownership of the analysis (and JD match), then sends the role's missing skills, JD missing skills,
+known resume skills, and saved resume text to Flask `/roadmap`. Flask orders the gaps, asks Gemini (through
+`llm.py`, JSON mode) for the milestones, validates them, and returns them; Node validates again, saves a
+`CareerRoadmap`, and returns it.
+
 ---
 
 ## 🔐 Authentication Flow
@@ -222,19 +235,21 @@ CareerCompass-AI/
 │   ├── src/
 │   │   ├── components/             # Navbar, ATSReport, CareerAgent, ProgressTracker
 │   │   ├── context/                # AuthContext (JWT session management)
-│   │   ├── pages/                  # AuthPage, OAuthSuccess, UploadResume,
-│   │   │                           # History, Dashboard, JDMatch, About, Compare, Profile
+│   │   ├── constants/              # targetRoles (the 12 roles shared by Analyze and Roadmap)
+│   │   ├── pages/                  # AuthPage, OAuthSuccess, UploadResume, History, Dashboard,
+│   │   │                           # JDMatch, Roadmap, About, Compare, Profile
 │   │   └── App.js
 ├── server/                         # Node.js backend
 │   ├── config/                     # passport.js (Google OAuth strategy)
 │   ├── middleware/                 # JWT auth middleware
-│   ├── models/                     # User, Analysis (+ resumeText), JDMatch
+│   ├── models/                     # User, Analysis (+ resumeText), JDMatch, CareerRoadmap
 │   ├── routes/                     # auth.js (Google OAuth, /me)
 │   ├── server.js
 │   └── .env
 └── ml-service/                     # Python ML + NLP service
     ├── app.py                      # Flask, spaCy, TF-IDF, GBR, Gemini
     ├── llm.py                      # Swappable text-generation provider
+    ├── roadmap.py                  # Gap ordering + roadmap response validation
     ├── requirements.txt
     └── .env
 ```
@@ -277,6 +292,43 @@ at most 50,000 resume characters and 8000 JD characters. Its result contains `ov
 Node returns HTTP 201 with the saved record, including that result under `result`. Missing/invalid
 JWTs return 401; database failures return sanitized 500 errors. Call Flask through Node in the browser.
 
+## 🗺️ Career Roadmap: Rules and Limits
+
+Open **Roadmap**, choose a target role, a saved analysis, an optional saved JD match, and hours per week
+(2–40), then **Generate**. If you don't choose a role, the analysis's target role (or best-matching role) is used.
+
+Gap list: the analysis's missing skills for the role come first, then the JD match's missing skills.
+Skills already detected on the resume are removed and duplicates are dropped. A small prerequisite map in
+`ml-service/roadmap.py` then sorts the gaps so (transitive) prerequisites come first. Unrelated skills keep their order.
+If no gaps remain, the result says you already cover the role and Gemini is not called.
+
+Gemini is asked for exactly `weeks` milestones (default 6) of `{ week, skill, objective, resources, mini_project }`.
+Each skill must come from the gap list, and resources must be 2–3 free resources. The prompt includes up to
+1500 characters of the resume's Projects section so mini-projects can extend existing work. Flask checks every
+field (required keys, types, lengths, weeks 1..N each once, skills from the gap list), then reorders milestones
+by gap order. A schema-invalid response is retried once, then Flask returns 502
+`AI returned an invalid roadmap. Try again.` Malformed JSON is repaired once inside `llm.py`. One generation can
+therefore make up to six SDK requests in the worst case. If there are fewer gaps than weeks, a skill spans
+several weeks; if there are more, only the first `weeks` gaps fit, and the rest stay listed as remaining gaps.
+
+Milestones are LLM suggestions: check that each resource exists and is still free. A milestone is marked
+complete automatically only when a later upload's extracted skills include it, which is a text mention, not proof of ability.
+
+API (all JWT-protected and owner-scoped; another user's records return 404, malformed IDs 400):
+- `POST /api/roadmap` `{ analysisId, hoursPerWeek, targetRole?, jdMatchId? }` returns 201 with the saved roadmap.
+  `targetRole` must be one of the 12 roles. Unknown fields, bad types, or out-of-range hours return 400.
+  It is limited to 10 requests/user/15 minutes (429). Flask failures return 502 (invalid AI roadmap) or 503, with safe messages only.
+- `GET /api/roadmap` returns your latest roadmap or `null`. `GET /api/roadmap/:id` returns one roadmap.
+- `PATCH /api/roadmap/:id/milestone/:mid` `{ status: "todo" | "progress" | "done" }` returns the updated roadmap.
+
+Internal Flask `POST /roadmap` (requires `X-Internal-Key`) accepts `{ target_role, missing_skills, jd_gaps,
+known_skills, hours_per_week, weeks?, resume_text? }`. The limits are: role ≤100 characters; skills ≤60 characters;
+at most 50 missing/JD gaps and 300 known skills; integer hours 2–40; integer weeks 4–12; resume ≤50,000 characters.
+It returns `{ covered, message, skill_gaps, milestones }`. Roadmaps are saved in MongoDB as `CareerRoadmap`
+records (`userId`, `analysisId`, optional `jdMatchId`, `targetRole`, `hoursPerWeek`, `skillGaps`, `covered`,
+`milestones` with `status`).
+No new environment variables are needed: generation uses the ML service's existing `GEMINI_API_KEY`.
+
 ### Tests and manual checks
 
 From the repository root, after completing local setup:
@@ -284,9 +336,11 @@ From the repository root, after completing local setup:
 ```powershell
 .\ml-service\venv\Scripts\python.exe -m unittest discover -s ml-service -p "test_*.py"
 npm --prefix server test
-npm --prefix client test -- --watchAll=false --runInBand --runTestsByPath src/pages/JDMatch.test.jsx src/components/CareerAgent.test.jsx
+cd client; $env:CI="true"; npx react-scripts test --watchAll=false; cd ..
 npm --prefix client run build
 ```
+
+On bash use `cd client && CI=true npx react-scripts test --watchAll=false`.
 
 On macOS/Linux, replace the Python executable above with `./ml-service/venv/bin/python`.
 Scoring tests use real scikit-learn and stub spaCy's lemma
@@ -354,7 +408,8 @@ Node sends the key on every Flask request. Copy `server/.env.example` and `ml-se
 `TRUST_PROXY_HOPS` defaults to `0` locally; use `1` only when Render is the single trusted reverse proxy.
 Verify the proxy topology before changing it, since it controls the IP used for rate limiting.
 
-Security limits: `/api` permits 300 requests per 15 minutes per IP; authenticated chat permits 20 per user per 15 minutes.
+Security limits: `/api` permits 300 requests per 15 minutes per IP; authenticated chat permits 20 per user per 15 minutes;
+roadmap generation permits 10 per user per 15 minutes.
 These counters are in memory per Node process and reset on restart; multiple replicas require a shared store.
 Uploads require one PDF, PDF MIME type, `.pdf` extension, and `%PDF-` signature; Node limits file size to 5 MiB.
 Flask limits the entire request (including multipart overhead) to 5 MiB and uses at most 50,000 extracted characters.
@@ -489,7 +544,6 @@ Retrain when you change `extract_features()`, update training data tiers, or add
 
 ## 📈 Future Scope
 
-- Career roadmap with learning path recommendations
 - Real job listing integration (LinkedIn, Indeed API)
 - Per-role ML models (separate model per job category)
 - Resume builder with inline AI suggestions

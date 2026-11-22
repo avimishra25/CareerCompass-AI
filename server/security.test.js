@@ -35,6 +35,7 @@ test("Phase 1 security boundaries", async (t) => {
     },
     "./models/Analysis": { create: async (data) => { savedAnalysis = data; return { _id: "analysis-id" }; } },
     "./models/JDMatch": {},
+    "./models/CareerRoadmap": { updateMany: async () => ({}) },
     axios: {
       post: async (url, payload, options) => {
         lastCall = { url, payload, options };

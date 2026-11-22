@@ -16,6 +16,7 @@ const authRoutes = require("./routes/auth");
 const protect    = require("./middleware/auth");
 const Analysis   = require("./models/Analysis");
 const JDMatch    = require("./models/JDMatch");
+const CareerRoadmap = require("./models/CareerRoadmap");
 
 const ML_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 const app    = express();
@@ -38,6 +39,32 @@ const chatLimit = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many chat requests. Try again later." },
 });
+const roadmapLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  keyGenerator: (req) => String(req.user._id),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many roadmap requests. Try again later." },
+});
+const isObjectId = (value) => typeof value === "string" && /^[a-f\d]{24}$/i.test(value);
+// Known-safe ML service messages that may reach the browser; anything else is replaced.
+const SAFE_AI_ERRORS = [
+  "AI quota exhausted or rate limit reached. Try again later.",
+  "AI service is not configured. Set GEMINI_API_KEY.",
+  "AI request rejected. Check GEMINI_API_KEY and GEMINI_MODEL configuration.",
+  "AI service temporarily unavailable. Try again later.",
+  "AI returned no text. Try rephrasing your request.",
+  "AI returned invalid JSON after one retry.",
+  "AI returned an invalid roadmap. Try again.",
+];
+// Must match ROLE_DEFINITIONS in ml-service/app.py (the roles stored in Analysis.match).
+const ROADMAP_ROLES = [
+  "fullstack developer", "frontend developer", "backend developer", "data scientist",
+  "devops engineer", "ml engineer", "mobile developer", "cloud architect",
+  "cybersecurity analyst", "ui/ux designer", "database administrator", "blockchain developer",
+];
+const MILESTONE_STATUSES = ["todo", "progress", "done"];
 
 app.use(cors({
   origin: [
@@ -46,7 +73,7 @@ app.use(cors({
     "https://career-compass-5tm4sgjrd-avimishra25s-projects.vercel.app",
     "http://localhost:3000",
   ],
-  methods:        ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods:        ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials:    true,
 }));
@@ -164,6 +191,20 @@ app.post("/upload", protect, upload.single("resume"), async (req, res) => {
       mlInsights:   ml_insights,
       resumeText:   typeof nlpRes.data.raw_text === "string" ? nlpRes.data.raw_text.slice(0, 50000) : undefined,
     });
+
+    // Skills now detected on the resume complete matching roadmap milestones.
+    const detectedSkills = Array.isArray(skills) ? skills.filter((skill) => typeof skill === "string") : [];
+    if (detectedSkills.length) {
+      try {
+        await CareerRoadmap.updateMany(
+          { userId: req.user._id, "milestones.skill": { $in: detectedSkills } },
+          { $set: { "milestones.$[m].status": "done" } },
+          { arrayFilters: [{ "m.skill": { $in: detectedSkills }, "m.status": { $ne: "done" } }] },
+        );
+      } catch (err) {
+        console.error("Roadmap progress update failed:", err.message);
+      }
+    }
 
     return res.json({
       skills,
@@ -307,16 +348,124 @@ app.post("/api/agent/chat", protect, chatLimit, async (req, res) => {
     res.json(response.data);
   } catch (error) {
     const status = [400, 413, 429].includes(error.response?.status) ? error.response.status : 503;
-    const safeErrors = [
-      "AI quota exhausted or rate limit reached. Try again later.",
-      "AI service is not configured. Set GEMINI_API_KEY.",
-      "AI request rejected. Check GEMINI_API_KEY and GEMINI_MODEL configuration.",
-      "AI service temporarily unavailable. Try again later.",
-      "AI returned no text. Try rephrasing your request.",
-      "AI returned invalid JSON after one retry.",
-    ];
     const message = error.response?.data?.error;
-    res.status(status).json({ error: safeErrors.includes(message) ? message : "Agent unavailable" });
+    res.status(status).json({ error: SAFE_AI_ERRORS.includes(message) ? message : "Agent unavailable" });
+  }
+});
+
+// ─── Career roadmap ───────────────────────────────────────────
+const skillList = (items, limit) => (Array.isArray(items) ? [...items] : [])
+  .filter((skill) => typeof skill === "string" && skill.trim() && [...skill].length <= 60)
+  .slice(0, limit);
+const boundedText = (value, limit) => typeof value === "string" && value.trim() && [...value].length <= limit;
+
+const validRoadmapResult = (data) => {
+  if (!data || typeof data !== "object" || typeof data.covered !== "boolean" ||
+      !Array.isArray(data.skill_gaps) || data.skill_gaps.length > 100 ||
+      data.skill_gaps.some((skill) => !boundedText(skill, 60)) || !Array.isArray(data.milestones)) return false;
+  if (data.covered) return data.milestones.length === 0;
+  return data.milestones.length >= 4 && data.milestones.length <= 12 && data.milestones.every((item, index) =>
+    item && typeof item === "object" && item.week === index + 1 && data.skill_gaps.includes(item.skill) &&
+    boundedText(item.objective, 500) && boundedText(item.mini_project, 300) &&
+    Array.isArray(item.resources) && item.resources.length >= 2 && item.resources.length <= 3 &&
+    item.resources.every((resource) => boundedText(resource, 200)));
+};
+
+app.post("/api/roadmap", protect, roadmapLimit, async (req, res) => {
+  const data = req.body;
+  if (!data || typeof data !== "object" || Array.isArray(data) ||
+      Object.keys(data).some((key) => !["analysisId", "jdMatchId", "targetRole", "hoursPerWeek"].includes(key)) ||
+      !isObjectId(data.analysisId) ||
+      (data.jdMatchId !== undefined && data.jdMatchId !== null && !isObjectId(data.jdMatchId)) ||
+      (data.targetRole !== undefined && !ROADMAP_ROLES.includes(data.targetRole)) ||
+      !Number.isInteger(data.hoursPerWeek) || data.hoursPerWeek < 2 || data.hoursPerWeek > 40) {
+    return res.status(400).json({ error: "Invalid roadmap payload" });
+  }
+  try {
+    const analysis = await Analysis.findOne({ _id: data.analysisId, user: req.user._id }).select("+resumeText");
+    if (!analysis) return res.status(404).json({ error: "Analysis not found" });
+    let jdMatch = null;
+    if (data.jdMatchId) {
+      jdMatch = await JDMatch.findOne({ _id: data.jdMatchId, userId: req.user._id });
+      if (!jdMatch) return res.status(404).json({ error: "JD match not found" });
+    }
+    const targetRole = data.targetRole ||
+      (ROADMAP_ROLES.includes(analysis.targetRole) ? analysis.targetRole : analysis.bestRole?.role);
+    const roleMatch = typeof analysis.match?.get === "function" ? analysis.match.get(targetRole) : analysis.match?.[targetRole];
+    if (!ROADMAP_ROLES.includes(targetRole) || !Array.isArray(roleMatch?.missing)) {
+      return res.status(400).json({ error: "Choose a target role for this analysis" });
+    }
+    const payload = {
+      target_role: targetRole,
+      missing_skills: skillList(roleMatch.missing, 50),
+      jd_gaps: skillList(jdMatch?.result?.missing_skills, 50),
+      known_skills: skillList(analysis.skills, 300),
+      hours_per_week: data.hoursPerWeek,
+    };
+    // Lets the plan extend the student's own projects; older analyses have no saved text.
+    if (typeof analysis.resumeText === "string" && analysis.resumeText.trim()) {
+      payload.resume_text = analysis.resumeText.slice(0, 50000);
+    }
+    let result;
+    try {
+      const response = await axios.post(`${ML_URL}/roadmap`, payload, { headers: internalHeaders(), timeout: 90000 });
+      result = response.data;
+      if (!validRoadmapResult(result)) return res.status(503).json({ error: "Roadmap generation unavailable" });
+    } catch (error) {
+      const status = [400, 413, 429, 502].includes(error.response?.status) ? error.response.status : 503;
+      const message = error.response?.data?.error;
+      return res.status(status).json({ error: SAFE_AI_ERRORS.includes(message) ? message : "Roadmap generation unavailable" });
+    }
+    const roadmap = await CareerRoadmap.create({
+      userId: req.user._id, analysisId: analysis._id, jdMatchId: jdMatch?._id || null, targetRole,
+      hoursPerWeek: data.hoursPerWeek, skillGaps: result.skill_gaps, covered: result.covered,
+      milestones: result.milestones.map(({ week, skill, objective, resources, mini_project }) => ({
+        week, skill, objective, resources, miniProject: mini_project,
+      })),
+    });
+    res.status(201).json(roadmap);
+  } catch {
+    res.status(500).json({ error: "Could not save roadmap" });
+  }
+});
+
+app.get("/api/roadmap", protect, async (req, res) => {
+  try {
+    const roadmap = await CareerRoadmap.findOne({ userId: req.user._id }).sort({ createdAt: -1 }).lean();
+    res.json(roadmap || null);
+  } catch {
+    res.status(500).json({ error: "Could not load roadmap" });
+  }
+});
+
+app.get("/api/roadmap/:id", protect, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(400).json({ error: "Invalid roadmap ID" });
+  try {
+    const roadmap = await CareerRoadmap.findOne({ _id: req.params.id, userId: req.user._id }).lean();
+    if (!roadmap) return res.status(404).json({ error: "Roadmap not found" });
+    res.json(roadmap);
+  } catch {
+    res.status(500).json({ error: "Could not load roadmap" });
+  }
+});
+
+app.patch("/api/roadmap/:id/milestone/:mid", protect, async (req, res) => {
+  const data = req.body;
+  if (!isObjectId(req.params.id) || !isObjectId(req.params.mid) ||
+      !data || typeof data !== "object" || Array.isArray(data) ||
+      Object.keys(data).length !== 1 || !MILESTONE_STATUSES.includes(data.status)) {
+    return res.status(400).json({ error: "Invalid milestone update" });
+  }
+  try {
+    const roadmap = await CareerRoadmap.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user._id, "milestones._id": req.params.mid },
+      { $set: { "milestones.$.status": data.status } },
+      { returnDocument: "after", runValidators: true },
+    ).lean();
+    if (!roadmap) return res.status(404).json({ error: "Milestone not found" });
+    res.json(roadmap);
+  } catch {
+    res.status(500).json({ error: "Could not update milestone" });
   }
 });
 

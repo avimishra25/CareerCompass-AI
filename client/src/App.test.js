@@ -1,8 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import App from './App';
 
-test('renders learn react link', () => {
+jest.mock('axios');
+
+test('signed-out visitors see the landing page with Google sign-in', async () => {
+  localStorage.removeItem('token');
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  expect((await screen.findAllByRole('button', { name: 'Sign In with Google' })).length).toBeGreaterThan(0);
+  expect(screen.queryByRole('button', { name: 'Roadmap' })).not.toBeInTheDocument();
 });
