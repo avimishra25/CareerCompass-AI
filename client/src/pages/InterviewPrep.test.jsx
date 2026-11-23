@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import axios from "axios";
 import InterviewPrep from "./InterviewPrep";
 
@@ -67,10 +67,10 @@ test("submitting an answer shows the score ring, rubric bars, feedback and next 
   // Resumes the active session at the first unanswered question.
   const card = await screen.findByRole("article", { name: "Current question" });
   expect(within(card).getByText("Question 2 of 5 · Technical")).toBeInTheDocument();
-  expect(within(card).getByText("targets gap: redis")).toBeInTheDocument();
+  expect(within(card).getByText("Targets gap: Redis")).toBeInTheDocument();
   const readiness = screen.getByRole("region", { name: "Interview readiness" });
   expect(within(readiness).getByText("8.0")).toBeInTheDocument();
-  expect(within(readiness).getByText(/▲ 2\.0 vs previous 5/)).toBeInTheDocument();
+  expect(readiness).toHaveTextContent("+2.0 vs previous 5");
   // jsdom has no Web Speech API, so the voice button is hidden.
   expect(screen.queryByRole("button", { name: /Answer by voice/ })).not.toBeInTheDocument();
 
@@ -92,8 +92,22 @@ test("submitting an answer shows the score ring, rubric bars, feedback and next 
   expect(within(card).getByText(answer)).toBeInTheDocument();
   expect(within(screen.getByRole("navigation", { name: "Session questions" })).getByText("7.0")).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: "Next question →" }));
+  fireEvent.click(screen.getByRole("button", { name: "Next question" }));
   expect(screen.getByText("Question 3 of 5 · Technical")).toBeInTheDocument();
-  expect(screen.getByText("topic: REST APIs")).toBeInTheDocument();
+  expect(screen.getByText("Topic: REST APIs")).toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "AI feedback" })).not.toBeInTheDocument();
+});
+
+test("a cold backend shows a skeleton, then explains the wait after 8 seconds", () => {
+  jest.useFakeTimers();
+  try {
+    axios.get.mockImplementation(() => new Promise(() => {})); // never answers
+    render(<InterviewPrep onNavigate={jest.fn()} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading your sessions");
+    expect(screen.queryByText(/Waking up the server/)).not.toBeInTheDocument();
+    act(() => { jest.advanceTimersByTime(8000); });
+    expect(screen.getByText("Waking up the server, this can take up to a minute on first load.")).toBeInTheDocument();
+  } finally {
+    jest.useRealTimers();
+  }
 });

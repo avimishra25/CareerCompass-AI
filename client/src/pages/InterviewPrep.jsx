@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { TARGET_ROLES } from "../constants/targetRoles";
+import { ArrowRight, Circle, CircleCheck, CircleDot, Lightbulb, MessagesSquare, Mic, Play, Square, TrendingDown, TrendingUp } from "lucide-react";
+import { Badge, Button, Card, EmptyState, Icon, InlineAlert, LoadingState, PageHeader, ProgressBar, ScoreRing, Select, Textarea, charCount, cx } from "../components/ui";
+import { ROLES } from "../constants/targetRoles";
+import { formatSkill } from "../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
 const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
 const errorMessage = (error, fallback) => error.response?.data?.error || error.response?.data?.message || fallback;
 
-const ROLES = TARGET_ROLES.filter((role) => role.value);
 const TYPES = [
   { value: "mixed", label: "Technical + HR" },
   { value: "technical", label: "Technical" },
@@ -23,22 +25,19 @@ const RUBRIC = [
   ["relevance", "Relevance"], ["technical_accuracy", "Technical accuracy"], ["structure", "Structure"],
   ["clarity", "Clarity"], ["depth", "Depth"],
 ];
-const TARGET_BADGE = {
-  gap:     { label: "targets gap",     style: { background: "rgba(14,165,201,0.1)",  color: "#0e7490" } },
-  project: { label: "targets project", style: { background: "rgba(108,99,255,0.1)",  color: "#5b52e0" } },
-  skill:   { label: "targets skill",   style: { background: "rgba(59,110,248,0.08)", color: "#3b6ef8" } },
-  topic:   { label: "topic",           style: { background: "rgba(136,146,180,0.12)", color: "#4a5278" } },
+// What the question tests, as a badge: gaps and skills are shown as formatted skill names.
+const TARGET = {
+  gap: { label: "Targets gap", tone: "warning", skill: true },
+  project: { label: "Targets project", tone: "brand", skill: false },
+  skill: { label: "Targets skill", tone: "neutral", skill: true },
+  topic: { label: "Topic", tone: "neutral", skill: false },
 };
 const MAX_ANSWER = 4000;
 const MIN_WORDS = 15;
-const font = "Plus Jakarta Sans, sans-serif";
-const labelStyle = { fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)" };
-const small = { fontSize: "12.5px", color: "var(--text-2)", lineHeight: 1.55 };
 
-const chars = (text) => [...text].length;
 const wordCount = (text) => (text.trim().match(/\S+/g) || []).length;
 const average = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
-const verdict = (score) => score >= 8 ? "Strong answer" : score >= 6 ? "Good answer" : score >= 4 ? "Needs work" : "Weak answer";
+const verdict = (score) => (score >= 8 ? "Strong answer" : score >= 6 ? "Good answer" : score >= 4 ? "Needs work" : "Weak answer");
 const speechRecognition = () => (typeof window === "undefined" ? null : window.SpeechRecognition || window.webkitSpeechRecognition || null);
 const listItem = ({ _id, role, type, difficulty, status, overallScore, createdAt, updatedAt, questions }) => ({
   _id, role, type, difficulty, status, overallScore, createdAt, updatedAt,
@@ -60,54 +59,55 @@ function readiness(history) {
   return { score, count: latest.length, change: previous.length ? score - average(previous) : null };
 }
 
-function ScoreRing({ score }) {
-  const percent = Math.round(score * 10);
-  return (
-    <div role="img" aria-label={`Score ${score.toFixed(1)} out of 10`} className="flex items-center justify-center shrink-0"
-      style={{ width: 58, height: 58, borderRadius: "50%", background: `conic-gradient(#3b6ef8 0 ${percent}%, rgba(59,110,248,0.12) ${percent}% 100%)` }}>
-      <div className="flex items-center justify-center" style={{ width: 46, height: 46, borderRadius: "50%", background: "#f4f6fb" }}>
-        <b style={{ color: "#3b6ef8" }}>{score.toFixed(1)}</b>
-      </div>
-    </div>
-  );
-}
-
 function FeedbackPanel({ question }) {
   return (
-    <section aria-label="AI feedback" className="grid gap-5 md:grid-cols-[1fr_1.25fr] mt-5 pt-4" style={{ borderTop: "1px solid rgba(180,190,220,0.4)" }}>
+    <section aria-label="AI feedback" className="mt-5 grid gap-6 border-t border-line pt-5 md:grid-cols-2">
       <div>
-        <div className="flex items-center gap-3 mb-3">
-          <ScoreRing score={question.overall} />
+        <div className="mb-4 flex items-center gap-3">
+          <ScoreRing value={question.overall} max={10} size={64} />
           <div>
-            <b>{verdict(question.overall)}</b>
-            <div style={small}>{question.shortAnswer ? `Scored without AI: under ${MIN_WORDS} words` : "AI feedback"}</div>
+            <p className="text-base font-semibold text-ink">{verdict(question.overall)}</p>
+            <p className="text-sm text-ink-muted">{question.shortAnswer ? `Scored without AI: under ${MIN_WORDS} words` : "AI feedback"}</p>
           </div>
         </div>
-        {RUBRIC.map(([key, label]) => {
-          const value = question.scores?.[key] ?? 0;
-          return (
-            <div key={key} className="mb-2.5">
-              <div className="flex justify-between" style={{ fontSize: "12.5px" }}><span>{label}</span><b>{value}/10</b></div>
-              <div className="progress-track mt-1" role="progressbar" aria-label={label} aria-valuemin={1} aria-valuemax={10} aria-valuenow={value}>
-                <div className="progress-fill" style={{ width: `${value * 10}%` }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div>
-        {question.strengths?.length > 0 && <>
-          <h3 style={{ ...labelStyle, color: "#059669" }}>Strengths</h3>
-          <ul aria-label="Strengths" className="list-disc mt-1.5 mb-2.5 ml-4" style={small}>
-            {question.strengths.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </>}
-        <h3 style={{ ...labelStyle, color: "#e11d63" }}>Improve</h3>
-        <ul aria-label="Improvements" className="list-disc mt-1.5 mb-2.5 ml-4" style={small}>
-          {question.improvements?.map((item) => <li key={item}>{item}</li>)}
+        <ul className="space-y-3">
+          {RUBRIC.map(([key, label]) => {
+            const value = question.scores?.[key] ?? 0;
+            return (
+              <li key={key}>
+                <div className="flex justify-between text-sm">
+                  <span className="text-ink-secondary">{label}</span>
+                  <span className="tabular font-medium text-ink">{value}/10</span>
+                </div>
+                <ProgressBar value={value} min={1} max={10} label={label} className="mt-1.5" />
+              </li>
+            );
+          })}
         </ul>
-        <h3 style={labelStyle}>Model answer outline</h3>
-        <p className="mt-1.5" style={small}>{question.modelAnswer}</p>
+      </div>
+      <div className="space-y-5">
+        {question.strengths?.length > 0 && (
+          <div>
+            <h3 className="text-sm font-semibold text-ink">Strengths</h3>
+            <ul aria-label="Strengths" className="mt-2 space-y-2">
+              {question.strengths.map((item) => (
+                <li key={item} className="flex gap-2 text-sm text-ink-secondary"><Icon icon={CircleCheck} className="mt-0.5 shrink-0 text-success" />{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div>
+          <h3 className="text-sm font-semibold text-ink">Improve</h3>
+          <ul aria-label="Improvements" className="mt-2 space-y-2">
+            {question.improvements?.map((item) => (
+              <li key={item} className="flex gap-2 text-sm text-ink-secondary"><Icon icon={Lightbulb} className="mt-0.5 shrink-0 text-warning" />{item}</li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold text-ink">Model answer outline</h3>
+          <p className="mt-2 text-sm text-ink-secondary">{question.modelAnswer}</p>
+        </div>
       </div>
     </section>
   );
@@ -200,7 +200,7 @@ export default function InterviewPrep({ onNavigate, preset }) {
   const questionNumber = session ? session.questions.indexOf(question) + 1 : 0;
   const answer = drafts[currentQid] || "";
   const setAnswer = (value) => setDrafts((items) => ({ ...items, [currentQid]: value }));
-  const answerTooLong = chars(answer) > MAX_ANSWER;
+  const answerTooLong = charCount(answer) > MAX_ANSWER;
 
   const submit = async (event) => {
     event.preventDefault();
@@ -259,149 +259,145 @@ export default function InterviewPrep({ onNavigate, preset }) {
 
   const ready = readiness(history);
   const nextQid = session && question?.answeredAt ? firstOpen(session, currentQid) : null;
-  const badge = TARGET_BADGE[question?.targetKind] || TARGET_BADGE.topic;
+  const target = TARGET[question?.targetKind] || TARGET.topic;
+  const words = wordCount(answer);
+  // Readiness comes from session history, so it shows with or without an open session.
+  const readinessCard = (className) => (
+    <Card as="section" aria-label="Interview readiness" padding="sm" className={className}>
+      <p className="text-sm text-ink-muted">Interview readiness</p>
+      {ready ? (
+        <>
+          <p className="mt-1"><span className="tabular text-xl font-semibold text-ink">{ready.score.toFixed(1)}</span><span className="text-sm text-ink-muted">/10</span></p>
+          <p className="mt-1 text-sm text-ink-secondary">
+            {ready.count === 1 ? "Your latest session" : `Average of last ${ready.count} sessions`}
+          </p>
+          {ready.change !== null && (
+            <p className={cx("mt-1 flex items-center gap-1 text-sm font-medium", ready.change >= 0 ? "text-success" : "text-danger")}>
+              <Icon icon={ready.change >= 0 ? TrendingUp : TrendingDown} />
+              <span className="tabular">{ready.change >= 0 ? "+" : "−"}{Math.abs(ready.change).toFixed(1)}</span> vs previous 5
+            </p>
+          )}
+        </>
+      ) : <p className="mt-1 text-sm text-ink-secondary">Answer questions to see your readiness score.</p>}
+    </Card>
+  );
 
   return (
-    <main className="px-6 py-10 max-w-5xl mx-auto" style={{ color: "var(--text)", fontFamily: font }}>
-      <h1 className="text-2xl font-extrabold">
-        Interview <em className="gradient-text" style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontWeight: 400 }}>Prep</em>
-      </h1>
-      <p className="text-sm mt-1.5 mb-6" style={{ color: "var(--text-2)" }}>
-        Practise role-specific questions generated from your resume and skill gaps, and get instant AI feedback.
-      </p>
-      {error && <p role="alert" className="text-red-600 text-sm mb-4">{error}</p>}
+    <>
+      <PageHeader title="Interview prep" description="Practise questions built from your resume and skill gaps, and get scored feedback on every answer." />
+      {error && <InlineAlert className="mb-4" onDismiss={() => setError("")}>{error}</InlineAlert>}
       {focus && (
-        <div aria-live="polite" className="flex flex-wrap items-center gap-3 mb-4 text-sm font-medium" style={{ color: "#3b6ef8" }}>
-          <span>{focus.jdMatchId
+        <InlineAlert tone="info" className="mb-4" action={<Button size="sm" variant="ghost" onClick={() => setFocus(null)}>Clear</Button>}>
+          {focus.jdMatchId
             ? `Your next session targets the job “${focus.jdTitle || "JD match"}”: its missing skills come first.`
-            : "Your next session uses the analysis you just ran."}</span>
-          <button type="button" className="btn-ghost px-3 py-1 rounded-lg text-xs" onClick={() => setFocus(null)}>Clear</button>
-        </div>
+            : "Your next session uses the analysis you just ran."}
+        </InlineAlert>
       )}
 
-      <form onSubmit={start} className="glass rounded-2xl mb-5 grid gap-3.5 md:grid-cols-[1.2fr_1fr_1fr_auto] items-end" style={{ padding: "18px 22px" }}>
-        <div>
-          <label htmlFor="interview-role" style={labelStyle}>Role</label>
-          <select id="interview-role" className="input-glass block w-full rounded-xl px-3 py-2.5 mt-1.5 text-sm font-semibold" value={role}
-            onChange={(event) => setRole(event.target.value)} disabled={starting}>
-            {ROLES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
+      {/* With a session open, phones show the question first and the settings after it. */}
+      <div className="flex flex-col gap-6">
+      <Card as="form" onSubmit={start} aria-label="Session settings" className={cx(session && "order-last lg:order-none")}>
+        {/* Full-width fields on a grid so role names are never cut off. */}
+        <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+          <Select label="Role" value={role} onChange={(event) => setRole(event.target.value)} disabled={starting}
+            options={ROLES.map(({ value, label }) => ({ value, label }))} />
+          <Select label="Type" value={type} onChange={(event) => setType(event.target.value)} disabled={starting} options={TYPES} />
+          <Select label="Difficulty" value={difficulty} onChange={(event) => setDifficulty(event.target.value)} disabled={starting} options={DIFFICULTIES} />
+          <Button type="submit" variant={session ? "secondary" : "primary"} icon={Play} loading={starting} disabled={loading}
+            className="sm:col-span-3 sm:justify-self-start lg:col-span-1">
+            {starting ? "Generating…" : "Start new session"}
+          </Button>
         </div>
-        <div>
-          <label htmlFor="interview-type" style={labelStyle}>Type</label>
-          <select id="interview-type" className="input-glass block w-full rounded-xl px-3 py-2.5 mt-1.5 text-sm" value={type}
-            onChange={(event) => setType(event.target.value)} disabled={starting}>
-            {TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="interview-difficulty" style={labelStyle}>Difficulty</label>
-          <select id="interview-difficulty" className="input-glass block w-full rounded-xl px-3 py-2.5 mt-1.5 text-sm" value={difficulty}
-            onChange={(event) => setDifficulty(event.target.value)} disabled={starting}>
-            {DIFFICULTIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
-        </div>
-        <button className="btn-primary px-5 py-3 rounded-xl text-sm disabled:opacity-50" disabled={starting || loading}>
-          {starting ? "Generating…" : "Start new session"}
-        </button>
-      </form>
+        {starting && <p role="status" className="mt-3 text-sm text-ink-muted">Writing 5 questions for this role. This takes a few seconds.</p>}
+      </Card>
 
-      {loading ? <p role="status" className="text-sm">Loading your sessions…</p> : (
-        <div className="grid gap-5 lg:grid-cols-[1fr_1.55fr] items-start">
-          <div>
-            {session && (
-              <nav aria-label="Session questions" className="glass rounded-2xl p-6 mb-4">
-                <div style={labelStyle} className="mb-2.5">Session · {session.questions.length} questions</div>
-                {session.questions.map((item, index) => {
-                  const current = item.qid === currentQid;
-                  const color = item.answeredAt ? "#10b981" : current ? "#3b6ef8" : "var(--text-3)";
-                  return (
-                    <button key={item.qid} type="button" onClick={() => select(item.qid)} aria-current={current ? "step" : undefined}
-                      className="w-full flex gap-2.5 text-left rounded-xl mb-2" style={{
-                        padding: "10px 12px",
-                        background: current ? "rgba(59,110,248,0.08)" : "transparent",
-                        border: `1px solid ${current ? "rgba(59,110,248,0.25)" : "rgba(180,190,220,0.35)"}`,
-                      }}>
-                      <b style={{ color }}>Q{index + 1}</b>
-                      <span className="flex-1" style={{ fontSize: "12.5px", color: item.answeredAt || current ? "var(--text)" : "var(--text-3)" }}>{item.text}</span>
-                      <b style={{ fontSize: 12, color: "var(--text-2)" }}>{item.answeredAt ? item.overall.toFixed(1) : "–"}</b>
+      {loading ? (
+        <LoadingState label="Loading your sessions" />
+      ) : !session ? (
+        <div className="grid items-start gap-4 lg:grid-cols-[256px_minmax(0,1fr)] lg:gap-6">
+          {readinessCard("lg:col-start-1 lg:row-start-1")}
+          <Card className="lg:col-start-2 lg:row-start-1">
+            <EmptyState icon={MessagesSquare} title="Start a session"
+              description={hasAnalysis
+                ? "Pick a role, type and difficulty above to get 5 questions built from your skills, gaps and projects."
+                : "You have no resume analysis yet, so questions will be general. Analyze a resume for questions about your own projects."}
+              action={!hasAnalysis && <Button onClick={() => onNavigate?.("analyze")}>Analyze resume</Button>} />
+          </Card>
+        </div>
+      ) : (
+        // Desktop: question rail and readiness on the left, the current question on the right.
+        // Phone: a compact horizontal stepper, then the question, then readiness.
+        // Row 1 hugs the question rail; row 2 takes the rest, so readiness sits right under the rail.
+        <div className="grid items-start gap-4 lg:grid-cols-[256px_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:gap-6">
+          <nav aria-label="Session questions" className="min-w-0 lg:col-start-1 lg:row-start-1">
+            <p className="mb-2 hidden text-sm font-medium text-ink-secondary lg:block">Session · {session.questions.length} questions</p>
+            <ol className="flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-1 lg:overflow-visible lg:pb-0">
+              {session.questions.map((item, index) => {
+                const current = item.qid === currentQid;
+                const icon = item.answeredAt ? CircleCheck : current ? CircleDot : Circle;
+                return (
+                  <li key={item.qid} className="shrink-0">
+                    <button type="button" onClick={() => select(item.qid)} aria-current={current ? "step" : undefined}
+                      className={cx("flex w-full items-start gap-2 rounded-control border px-3 py-2 text-left text-sm transition-ui",
+                        current ? "border-brand bg-brand-tint" : "border-line bg-surface hover:bg-hover")}>
+                      <Icon icon={icon} className={cx("mt-0.5 shrink-0", item.answeredAt ? "text-success" : current ? "text-brand" : "text-ink-muted")} />
+                      <span className="font-medium text-ink">Q{index + 1}</span>
+                      <span className="hidden min-w-0 flex-1 text-ink-secondary lg:line-clamp-2">{item.text}</span>
+                      <span className="tabular ml-auto text-ink-muted">{item.answeredAt ? item.overall.toFixed(1) : "–"}</span>
                     </button>
-                  );
-                })}
-              </nav>
-            )}
-            <section aria-label="Interview readiness" className="glass rounded-2xl text-center" style={{ padding: 18 }}>
-              <div className="text-xs mb-1.5" style={{ color: "var(--text-3)" }}>Interview readiness</div>
-              {ready ? <>
-                <div className="text-2xl font-extrabold" style={{ color: "#6c63ff" }}>
-                  {ready.score.toFixed(1)}<span className="text-sm" style={{ color: "var(--text-3)" }}>/10</span>
-                </div>
-                <div className="mt-1" style={small}>
-                  Average of {ready.count === 1 ? "your latest session" : `last ${ready.count} sessions`}
-                  {ready.change !== null && ` · ${ready.change >= 0 ? "▲" : "▼"} ${Math.abs(ready.change).toFixed(1)} vs previous 5`}
-                </div>
-              </> : <div style={small}>Answer questions to see your readiness score.</div>}
-            </section>
-          </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </nav>
 
-          {!question ? (
-            <div className="glass rounded-2xl p-6" style={small}>
-              <p>Start a session to get 5 questions for your role, built from your resume skills, skill gaps and projects.</p>
-              {!hasAnalysis && <>
-                <p className="mt-2">You have no resume analysis yet, so questions will be general.</p>
-                <button type="button" className="btn-ghost px-4 py-2 rounded-xl text-sm mt-3" onClick={() => onNavigate?.("analyze")}>Analyze a resume</button>
-              </>}
-            </div>
-          ) : (
-            <article aria-label="Current question" className="glass rounded-2xl p-6">
-              <div className="flex justify-between items-start gap-3">
-                <div style={labelStyle}>Question {questionNumber} of {session.questions.length} · {QUESTION_TYPE[question.type]}</div>
-                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap" style={badge.style}>
-                  {badge.label}: {question.targets}
-                </span>
+          {question && (
+            <Card as="article" aria-label="Current question" className="min-w-0 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-ink-muted">Question {questionNumber} of {session.questions.length} · {QUESTION_TYPE[question.type]}</p>
+                <Badge tone={target.tone}>{target.label}: {target.skill ? formatSkill(question.targets) : question.targets}</Badge>
               </div>
-              <h2 className="font-bold text-base mt-2">{question.text}</h2>
+              <h2 className="mt-2 text-lg font-semibold text-ink">{question.text}</h2>
 
-              {question.answeredAt ? <>
-                <div className="mt-3 text-xs" style={{ color: "var(--text-3)" }}>Your answer</div>
-                <p className="mt-1.5 whitespace-pre-wrap" style={small}>{question.answer || <em>No answer given.</em>}</p>
-                <FeedbackPanel question={question} />
-                <div className="mt-4">
-                  {nextQid ? (
-                    <button type="button" className="btn-primary px-4 py-2.5 rounded-xl text-sm" onClick={() => select(nextQid)}>Next question →</button>
-                  ) : (
-                    <p className="text-sm font-semibold">
-                      Session complete · {session.overallScore?.toFixed(1)}/10. Start a new session to keep practising.
-                    </p>
-                  )}
-                </div>
-              </> : (
-                <form onSubmit={submit}>
-                  <label htmlFor="interview-answer" className="block mt-3 text-xs" style={{ color: "var(--text-3)" }}>Your answer</label>
-                  <textarea id="interview-answer" rows={7} className="input-glass block w-full rounded-xl px-3 py-2.5 mt-1.5"
-                    style={{ fontSize: "12.5px", lineHeight: 1.5 }} value={answer} disabled={submitting}
-                    onChange={(event) => setAnswer(event.target.value)} aria-describedby="answer-hint" />
-                  <div id="answer-hint" className="flex justify-between gap-3 mt-1 text-xs" style={{ color: answerTooLong ? "#dc2626" : "var(--text-3)" }}>
-                    <span>{wordCount(answer) < MIN_WORDS ? `Answers under ${MIN_WORDS} words score 1/10 without AI review.` : listening ? "Listening… speak your answer." : ""}</span>
-                    <span>{chars(answer)}/{MAX_ANSWER}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2.5 mt-2.5">
-                    {Recognition && (
-                      <button type="button" className="btn-ghost px-4 py-2 rounded-xl text-sm" onClick={toggleVoice} disabled={submitting}
-                        aria-pressed={listening}>
-                        {listening ? "■ Stop recording" : "🎤 Answer by voice"}
-                      </button>
+              {question.answeredAt ? (
+                <>
+                  <h3 className="mt-4 text-sm font-medium text-ink-secondary">Your answer</h3>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{question.answer || <span className="text-ink-muted">No answer given.</span>}</p>
+                  <FeedbackPanel question={question} />
+                  <div className="mt-5 border-t border-line pt-4">
+                    {nextQid ? (
+                      <Button variant="primary" iconRight={ArrowRight} onClick={() => select(nextQid)}>Next question</Button>
+                    ) : (
+                      <p className="text-sm font-medium text-ink">
+                        Session complete · <span className="tabular">{session.overallScore?.toFixed(1)}/10</span>. Start a new session to keep practising.
+                      </p>
                     )}
-                    <button className="btn-primary px-4 py-2 rounded-xl text-sm disabled:opacity-50" disabled={submitting || answerTooLong}>
+                  </div>
+                </>
+              ) : (
+                <form onSubmit={submit} className="mt-4">
+                  <Textarea label="Your answer" rows={8} value={answer} maxLength={MAX_ANSWER} disabled={submitting}
+                    onChange={(event) => setAnswer(event.target.value)}
+                    hint={listening ? "Listening. Speak your answer." : words < MIN_WORDS ? `Answers under ${MIN_WORDS} words score 1/10 without AI review.` : undefined} />
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button type="submit" variant="primary" loading={submitting} disabled={answerTooLong}>
                       {submitting ? "Scoring…" : "Submit answer"}
-                    </button>
+                    </Button>
+                    {Recognition && (
+                      <Button icon={listening ? Square : Mic} onClick={toggleVoice} disabled={submitting} aria-pressed={listening}>
+                        {listening ? "Stop recording" : "Answer by voice"}
+                      </Button>
+                    )}
                   </div>
                 </form>
               )}
-            </article>
+            </Card>
           )}
+
+          {readinessCard("lg:col-start-1 lg:row-start-2")}
         </div>
       )}
-    </main>
+      </div>
+    </>
   );
 }
