@@ -22,7 +22,7 @@ test("context includes the roadmap's next milestone and the last interview score
   axios.post.mockResolvedValue({ data: { reply: "Focus on kubernetes." } });
   render(<CareerAgent open skills={["docker"]} atsScore={70} bestRole={{ role: "devops engineer" }} />);
   expect(screen.getByRole("complementary", { name: "Career coach" })).toBeVisible();
-  expect(await screen.findByText("Next: kubernetes")).toBeInTheDocument();
+  expect(await screen.findByText("Next: Kubernetes")).toBeInTheDocument();
   expect(screen.getByText("Interview 8.2/10")).toBeInTheDocument();
   expect(axios.get).toHaveBeenCalledWith(expect.stringContaining("/api/dashboard/summary"), { headers: { Authorization: "Bearer test-token" } });
 

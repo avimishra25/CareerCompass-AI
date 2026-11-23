@@ -3,6 +3,7 @@ import axios from "axios";
 import { Send, X } from "lucide-react";
 import { Badge, Button, InlineAlert, cx } from "./ui";
 import { roleLabel } from "../constants/targetRoles";
+import { formatSkill } from "../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
@@ -115,11 +116,13 @@ export default function CareerAgent({ open = true, onClose, skills, atsScore, at
   };
   const next = progress?.roadmap?.nextMilestone;
 
+  // `hidden` alone is not enough: the `flex` utility would override it, so the display class follows `open`.
   return (
     <aside
       id="career-coach" aria-label="Career coach" hidden={!open}
       onKeyDown={(event) => { if (event.key === "Escape" && onClose) onClose(); }}
-      className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-line bg-surface shadow-overlay md:w-[380px] xl:shadow-none"
+      className={cx("fixed inset-y-0 right-0 z-50 w-full flex-col border-l border-line bg-surface shadow-overlay md:w-[380px] 2xl:shadow-none",
+        open ? "flex" : "hidden")}
     >
       <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-line px-4">
         <div className="min-w-0">
@@ -137,7 +140,7 @@ export default function CareerAgent({ open = true, onClose, skills, atsScore, at
           <Badge>{skills?.length || 0} skills</Badge>
           <Badge>ATS {atsScore ?? "–"}/100</Badge>
           {bestRole?.role && <Badge>{roleLabel(bestRole.role)}</Badge>}
-          {next && <Badge tone="brand">Next: {next.skill}</Badge>}
+          {next && <Badge tone="brand">Next: {formatSkill(next.skill)}</Badge>}
           {progress?.lastInterviewScore != null && <Badge tone="brand">Interview {progress.lastInterviewScore.toFixed(1)}/10</Badge>}
         </div>
       )}

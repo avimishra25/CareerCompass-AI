@@ -33,7 +33,8 @@ export default function AppShell({ currentPage, onNavigate, user, onLogout, chil
       </aside>
       <MobileDrawer {...navProps} open={drawerOpen} onClose={() => setDrawerOpen(false)} returnFocusRef={menuButtonRef} />
 
-      <div className={cx("flex min-h-screen min-w-0 flex-col", collapsed ? "lg:pl-16" : "lg:pl-60", coachOpen && "xl:pr-[380px]")}>
+      {/* The coach panel overlays the page; only on very wide screens (2xl, 1536px+) does it push content aside. */}
+      <div className={cx("flex min-h-screen min-w-0 flex-col", collapsed ? "lg:pl-16" : "lg:pl-60", coachOpen && "2xl:pr-[380px]")}>
         <TopBar ref={menuButtonRef} currentPage={currentPage} onNavigate={onNavigate}
           onOpenMenu={() => setDrawerOpen(true)} menuOpen={drawerOpen}
           coachOpen={coachOpen} onToggleCoach={() => setCoachOpen((value) => !value)} />
