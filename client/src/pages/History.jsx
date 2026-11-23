@@ -55,7 +55,7 @@ export default function History({ onNavigate }) {
       <div className="max-w-5xl mx-auto">
 
         {/* ── Header ── */}
-        <div className="mb-8 fade-up flex items-end justify-between flex-wrap gap-4">
+        <div className="mb-8 flex items-end justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-3xl font-bold mb-1"
               style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
@@ -129,7 +129,7 @@ export default function History({ onNavigate }) {
         )}
 
         {!loading && !error && history.length === 0 && (
-          <div className="glass rounded-3xl p-16 text-center fade-up">
+          <div className="glass rounded-3xl p-16 text-center">
             <div className="text-5xl mb-4">📭</div>
             <h3 className="font-bold text-lg mb-1"
               style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
@@ -142,14 +142,12 @@ export default function History({ onNavigate }) {
         )}
 
         <div className="space-y-4">
-          {history.map((entry, i) => {
+          {history.map((entry) => {
             const isSelected = selected.includes(entry._id);
             return (
               <div key={entry._id}
-                className="glass rounded-2xl p-6 fade-up transition-all duration-200"
+                className="glass rounded-2xl p-6 transition-all duration-200"
                 style={{
-                  animationDelay: `${i * 0.06}s`,
-                  opacity: 0,
                   border: isSelected
                     ? "1.5px solid rgba(59,110,248,0.45)"
                     : "1.5px solid transparent",
