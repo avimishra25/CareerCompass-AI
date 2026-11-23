@@ -35,7 +35,7 @@ in `docs/screenshots/`.
 | **Roadmap** (`09` → `roadmap`) | Truncated selects, every week a full card, six weeks titled "rest api" for a single gap | Full-width form; timeline with status icons, the current week highlighted, finished weeks collapsed; "Skill: subtopic" titles; at most 2 weeks per gap; "You cover this role" empty state |
 | **Resume builder** (`10` → `resume-builder`) | Pill tabs, emoji buttons, a suggestion list, a preview that changed height | Section stepper with completion state; before → after suggestion card (Accept / Edit / Regenerate / Discard); a fixed A4-proportion preview, sticky on wide screens |
 | **Interview prep** (`11`, `12` → `interview-question`, `interview-feedback`) | At 390px the question sat below the form, list and readiness card; truncated selects | Question rail with readiness on desktop; on phones a compact stepper, then the question first; feedback uses the shared score ring and progress bars |
-| **About** (`13` → `about`) | Serif accents, a gradient CTA, and libraries the code does not use (bcrypt, Nodemailer) | What it does, how scoring works (with the synthetic-data caveat), the actual stack, and the team and mentor credit |
+| **About** (`13` → `about`) | Serif accents, a gradient CTA, and libraries the code does not use (bcrypt, Nodemailer) | What it does, how scoring works (with the synthetic-data caveat), the actual stack, and the builder credit |
 | **Profile** (`14` → `profile`) | Gradient avatar, glass cards | Account card and a danger "Log out" |
 | **Mobile menu** (`15`) | Dropdown under the top bar | Modal drawer with focus trap and Esc to close (`dashboard-390-drawer` in the review previews) |
 

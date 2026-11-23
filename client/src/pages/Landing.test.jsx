@@ -28,9 +28,7 @@ test("one headline, one primary sign-in, three feature blocks, a product screens
   expect(screen.getByRole("img", { name: /dashboard with ATS score/ })).toHaveAttribute("src", "/product-dashboard.jpg");
 
   const footer = screen.getByRole("contentinfo");
-  expect(footer).toHaveTextContent("Avi Akhilesh Mishra (23BCP266)");
-  expect(footer).toHaveTextContent("Harshil Himanshubhai Khara (23BCP249)");
-  expect(footer).toHaveTextContent("Dr. Darshit Shah, Assistant Professor, Department of Computer Science & Engineering, School of Technology, PDEU");
+  expect(footer).toHaveTextContent("Built by Avi Mishra.");
 
   // No emoji, uppercase badge or serif accents.
   // (© is "pictographic" in Unicode, so match emoji by presentation and the emoji variation selector.)

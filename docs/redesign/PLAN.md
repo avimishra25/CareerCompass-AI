@@ -14,10 +14,7 @@ that conflicts with them.
 4. Inter is self-hosted through `@fontsource/inter` (400/500/600), falling back to the system stack.
    There is no Google Fonts request.
 5. The work happens on branch `redesign/product-ui`, which is not pushed until asked.
-6. The About page builder card credits the team:
-   - Avi Akhilesh Mishra (23BCP266) and Harshil Himanshubhai Khara (23BCP249)
-   - under the guidance of Dr. Darshit Shah, Assistant Professor, Department of Computer Science &
-     Engineering, School of Technology, PDEU
+6. The About page builder card reads "Built by Avi Mishra."
 7. Step 5 also saves clean 1440px PNG screenshots to `docs/screenshots/` for the report and slides, with
    the fixture user renamed to "Rahul Verma":
    - Dashboard

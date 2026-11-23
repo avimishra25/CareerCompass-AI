@@ -90,11 +90,7 @@ export default function Landing({ onSignIn = signInWithGoogle }) {
       <footer className="border-t border-line bg-surface">
         <div className="mx-auto max-w-5xl space-y-1.5 px-4 py-8 text-sm text-ink-muted sm:px-6">
           <Logo />
-          <p className="pt-2">Built by Avi Akhilesh Mishra (23BCP266) and Harshil Himanshubhai Khara (23BCP249).</p>
-          <p>
-            Under the guidance of Dr. Darshit Shah, Assistant Professor, Department of Computer Science &amp; Engineering,
-            School of Technology, PDEU.
-          </p>
+          <p className="pt-2">Built by Avi Mishra.</p>
           <p>© 2026 CareerCompass AI</p>
         </div>
       </footer>

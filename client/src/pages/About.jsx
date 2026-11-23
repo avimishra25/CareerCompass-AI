@@ -73,12 +73,7 @@ export default function About() {
             </span>
             <div className="min-w-0 flex-1 space-y-1 text-sm">
               <p className="text-ink">
-                Built by <span className="font-medium">Avi Akhilesh Mishra (23BCP266)</span> and{" "}
-                <span className="font-medium">Harshil Himanshubhai Khara (23BCP249)</span>.
-              </p>
-              <p className="text-ink-secondary">
-                Under the guidance of Dr. Darshit Shah, Assistant Professor, Department of Computer Science &amp; Engineering,
-                School of Technology, PDEU.
+                Built by <span className="font-medium">Avi Mishra</span>.
               </p>
               <a href="https://github.com/avimishra25/CareerCompass-AI" target="_blank" rel="noreferrer"
                 className="inline-flex items-center gap-1 rounded-control pt-1 font-medium text-brand hover:underline">
