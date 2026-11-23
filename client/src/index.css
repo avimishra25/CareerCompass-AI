@@ -1,188 +1,132 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ── Design tokens ── */
+/* ── Design tokens ─────────────────────────────────────────────
+   One brand colour (compass teal), one grey scale, semantic colours only for meaning.
+   Every text/background pair used below meets WCAG AA (docs/redesign/tools/contrast.mjs). */
 :root {
-  --bg:        #f0f2f7;
-  --bg-deep:   #e4e8f2;
-  --surface:   rgba(255,255,255,0.62);
-  --surface-hover: rgba(255,255,255,0.82);
-  --border:    rgba(255,255,255,0.75);
-  --border-subtle: rgba(180,190,220,0.4);
-  --text:      #0f1628;
-  --text-2:    #4a5278;
-  --text-3:    #8892b4;
-  --blue:      #3b6ef8;
-  --blue-soft: #e8eeff;
-  --indigo:    #6c63ff;
-  --teal:      #0ea5c9;
-  --rose:      #f43f7e;
-  --shadow-sm: 0 2px 8px rgba(60,80,160,0.07);
-  --shadow-md: 0 8px 32px rgba(60,80,160,0.12);
-  --shadow-lg: 0 20px 60px rgba(60,80,160,0.16);
+  --page: #f7f8fa;
+  --surface: #ffffff;
+  --border: #e4e7ec;
+  --border-strong: #d0d5dd;
+  --hover: #f2f4f7;
+  --track: #eaecf0;
+
+  --text: #101828;
+  --text-secondary: #344054;
+  --text-muted: #667085;
+
+  --brand: #0f766e;
+  --brand-hover: #115e59;
+  --brand-tint: #f0fdfa;
+
+  --success: #067647;
+  --success-tint: #ecfdf3;
+  --warning: #b54708;
+  --warning-tint: #fffaeb;
+  --danger: #b42318;
+  --danger-tint: #fef3f2;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-overlay: 0 8px 24px rgba(16, 24, 40, 0.12);
+  --focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px var(--brand);
+
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif-document: "Times New Roman", Times, Georgia, serif; /* resume preview only (matches the PDF) */
+
+  /* Legacy names still read by pages that are not yet refactored; removed in the cleanup commit. */
+  --bg: var(--page);
+  --text-2: var(--text-secondary);
+  --text-3: var(--text-muted);
+  --blue: var(--brand);
+  --indigo: var(--brand);
+  --teal: var(--brand);
+  --rose: var(--danger);
+  --border-subtle: var(--border);
+  --shadow-sm: var(--shadow);
+  --shadow-md: var(--shadow);
+  --shadow-lg: var(--shadow-overlay);
 }
 
-* { box-sizing: border-box; }
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--page);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  h1, h2, h3, h4 { color: var(--text); font-weight: 600; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: var(--brand); }
+  ::selection { background: #ccfbf1; color: var(--text); }
 
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  overflow-x: hidden;
-  min-height: 100vh;
+  /* One focus style everywhere; only for keyboard focus. */
+  :focus { outline: none; }
+  :focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
 }
 
-/* ── Background mesh ── */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  background:
-    radial-gradient(ellipse 80% 60% at 10% 0%,   rgba(108,99,255,0.13) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 50% at 95% 10%,  rgba(14,165,201,0.11) 0%, transparent 55%),
-    radial-gradient(ellipse 50% 60% at 50% 100%, rgba(244,63,126,0.08) 0%, transparent 60%),
-    linear-gradient(160deg, #eef1f9 0%, #e8ecf8 40%, #edf0fb 100%);
-  pointer-events: none;
+@layer utilities {
+  .tabular { font-variant-numeric: tabular-nums; }
+  .transition-ui { transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, opacity 150ms ease, box-shadow 150ms ease; }
 }
 
-/* ── Noise texture ── */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  opacity: 0.025;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-  background-size: 200px 200px;
-  pointer-events: none;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
-/* ── Glass card ── */
-.glass {
+/* ── Legacy helpers ────────────────────────────────────────────
+   Temporary: map the old class names onto the new look so screens that are not yet
+   refactored stay usable. Each page commit stops using them; the cleanup commit deletes them. */
+.glass, .glass-dark {
   background: var(--surface);
   border: 1px solid var(--border);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255,255,255,0.9);
-  transition: box-shadow 0.25s, background 0.25s, transform 0.2s;
-  position: relative;
-  z-index: 1;
-}
-.glass:hover {
-  background: var(--surface-hover);
-  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,1);
-}
-.glass-dark {
-  background: rgba(15,22,40,0.88);
-  border: 1px solid rgba(255,255,255,0.1);
-  backdrop-filter: blur(24px) saturate(160%);
-  box-shadow: var(--shadow-lg);
-  color: #e8ecf8;
-}
-
-/* ── Gradient text ── */
-.gradient-text {
-  background: linear-gradient(125deg, #3b6ef8, #6c63ff, #0ea5c9);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-.gradient-text-warm {
-  background: linear-gradient(125deg, #6c63ff, #f43f7e);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* ── Primary button ── */
-.btn-primary {
-  background: linear-gradient(135deg, #3b6ef8, #6c63ff);
-  color: #fff;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-weight: 600;
-  box-shadow: 0 4px 20px rgba(59,110,248,0.35);
-  transition: transform 0.18s, box-shadow 0.18s, opacity 0.18s;
-}
-.btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(59,110,248,0.45);
-}
-.btn-primary:active { transform: translateY(0); }
-
-/* ── Ghost button ── */
-.btn-ghost {
-  background: rgba(255,255,255,0.55);
-  border: 1px solid rgba(180,190,220,0.5);
-  color: var(--text-2);
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-weight: 500;
-  backdrop-filter: blur(8px);
-  transition: background 0.18s, box-shadow 0.18s, transform 0.18s;
-}
-.btn-ghost:hover {
-  background: rgba(255,255,255,0.85);
-  box-shadow: var(--shadow-sm);
-  transform: translateY(-1px);
-}
-
-/* ── Input ── */
-.input-glass {
-  background: rgba(255,255,255,0.7);
-  border: 1px solid rgba(180,190,220,0.5);
+  box-shadow: var(--shadow);
   color: var(--text);
-  backdrop-filter: blur(8px);
-  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
-  font-family: 'Plus Jakarta Sans', sans-serif;
 }
-.input-glass:focus {
-  outline: none;
-  border-color: #3b6ef8;
-  background: rgba(255,255,255,0.95);
-  box-shadow: 0 0 0 3px rgba(59,110,248,0.12);
-}
-.input-glass::placeholder { color: var(--text-3); }
-
-/* ── Skill pill ── */
-.skill-pill {
-  background: rgba(59,110,248,0.08);
-  border: 1px solid rgba(59,110,248,0.18);
-  color: #3b6ef8;
-  font-size: 0.72rem;
+.gradient-text, .gradient-text-warm { color: var(--text); }
+.btn-primary {
+  background: var(--brand);
+  color: #fff;
   font-weight: 500;
-  padding: 3px 10px;
-  border-radius: 999px;
+  transition: background-color 150ms ease;
 }
-
-/* ── Progress ── */
-.progress-track {
-  background: rgba(59,110,248,0.08);
-  border-radius: 999px;
-  height: 5px;
-  overflow: hidden;
+.btn-primary:hover { background: var(--brand-hover); }
+.btn-ghost {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+  font-weight: 500;
+  transition: background-color 150ms ease;
 }
-.progress-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #3b6ef8, #6c63ff);
-  transition: width 1s cubic-bezier(.4,0,.2,1);
+.btn-ghost:hover { background: var(--hover); }
+.input-glass {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
 }
-
-/* ── Animations ── */
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to   { opacity: 1; transform: translateY(0); }
+.input-glass:focus { border-color: var(--brand); }
+.skill-pill {
+  background: var(--hover);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
 }
-.fade-up   { animation: fadeUp 0.55s ease forwards; }
-.fade-up-1 { animation: fadeUp 0.55s ease 0.1s forwards; opacity: 0; }
-.fade-up-2 { animation: fadeUp 0.55s ease 0.2s forwards; opacity: 0; }
-.fade-up-3 { animation: fadeUp 0.55s ease 0.3s forwards; opacity: 0; }
-.fade-up-4 { animation: fadeUp 0.55s ease 0.4s forwards; opacity: 0; }
-
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 5px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: rgba(59,110,248,0.25); border-radius: 3px; }
+.progress-track { background: var(--track); border-radius: 999px; height: 6px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 999px; background: var(--brand); transition: width 150ms ease; }
