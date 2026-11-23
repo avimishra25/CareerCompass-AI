@@ -8,6 +8,41 @@ beforeEach(() => {
   jest.clearAllMocks();
   Element.prototype.scrollIntoView = jest.fn();
   localStorage.setItem("token", "test-token");
+  axios.get.mockRejectedValue(new Error("no summary in this test"));
+});
+
+test("context includes the roadmap's next milestone and the last interview score", async () => {
+  axios.get.mockResolvedValue({ data: {
+    roadmap: { targetRole: "devops engineer", completion: 50, nextMilestone: { week: 3, skill: "kubernetes", objective: "Pods", status: "progress" } },
+    interview: { readiness: 7.6, sessions: 5, change: null, lastScore: 8.2 },
+  } });
+  axios.post.mockResolvedValue({ data: { reply: "Focus on kubernetes." } });
+  render(<CareerAgent skills={["docker"]} atsScore={70} bestRole={{ role: "devops engineer" }} />);
+  fireEvent.click(screen.getByTitle("AI Career Coach"));
+  expect(await screen.findByText("Next: kubernetes")).toBeInTheDocument();
+  expect(screen.getByText("Interview 8.2/10")).toBeInTheDocument();
+  expect(axios.get).toHaveBeenCalledWith(expect.stringContaining("/api/dashboard/summary"), { headers: { Authorization: "Bearer test-token" } });
+
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "What next?" } });
+  fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+  await screen.findByText("Focus on kubernetes.");
+  const context = axios.post.mock.calls[0][1].history.filter((item) => item.content.startsWith("Resume analysis context"));
+  const parsed = JSON.parse(context.map((item) => item.content.split("\n").slice(1).join("\n")).join(""));
+  expect(parsed.careerProgress).toEqual({
+    roadmap: { targetRole: "devops engineer", completion: 50, nextMilestone: { week: 3, skill: "kubernetes", objective: "Pods" } },
+    lastInterviewScore: 8.2, interviewReadiness: 7.6,
+  });
+});
+
+test("the coach still works when the summary cannot load", async () => {
+  axios.post.mockResolvedValue({ data: { reply: "Sure." } });
+  render(<CareerAgent skills={["docker"]} />);
+  fireEvent.click(screen.getByTitle("AI Career Coach"));
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "Hi" } });
+  fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+  await screen.findByText("Sure.");
+  const context = axios.post.mock.calls[0][1].history.filter((item) => item.content.startsWith("Resume analysis context"));
+  expect(JSON.parse(context.map((item) => item.content.split("\n").slice(1).join("\n")).join("")).careerProgress).toBeNull();
 });
 
 test("preserves ML insights and all turns, including long assistant replies", async () => {

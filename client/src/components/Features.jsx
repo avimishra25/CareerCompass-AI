@@ -3,6 +3,9 @@ const features = [
   { icon:"📄", title:"Resume Analysis",  desc:"Our NLP engine scans your PDF and extracts every relevant skill — no guesswork.",          accent:"#3b6ef8" },
   { icon:"🎯", title:"Career Matching",  desc:"Compatibility scores for Frontend, Backend, Data Science and more, calculated instantly.", accent:"#6c63ff" },
   { icon:"🔍", title:"Skill Gap Report", desc:"See exactly what's missing for your dream role and build a focused learning plan.",          accent:"#0ea5c9" },
+  { icon:"🗺️", title:"Career Roadmap",   desc:"A week-by-week plan for your skill gaps, prerequisites first, with free resources and mini-projects.", accent:"#10b981" },
+  { icon:"📝", title:"AI Resume Builder", desc:"Turn rough notes into action-verb bullets, watch a live ATS score, and export an ATS-friendly PDF.", accent:"#3b6ef8" },
+  { icon:"🎤", title:"Interview Prep",   desc:"Practise questions on your own gaps and projects, by text or voice, with rubric-based AI feedback.",  accent:"#6c63ff" },
 ];
 export default function Features() {
   return (
@@ -12,7 +15,7 @@ export default function Features() {
           <h2 className="text-3xl font-bold mb-2" style={{color:"var(--text)",fontFamily:'Plus Jakarta Sans,sans-serif'}}>
             What we <span style={{fontFamily:"'Instrument Serif',serif",fontStyle:"italic"}} className="gradient-text">offer</span>
           </h2>
-          <p className="text-sm" style={{color:"var(--text-2)",fontFamily:'Plus Jakarta Sans,sans-serif'}}>Three powerful tools, one clean dashboard.</p>
+          <p className="text-sm" style={{color:"var(--text-2)",fontFamily:'Plus Jakarta Sans,sans-serif'}}>From resume analysis to interview day, in one clean dashboard.</p>
         </div>
         <div className="grid md:grid-cols-3 gap-5">
           {features.map((f,i) => (

@@ -113,7 +113,14 @@ function FeedbackPanel({ question }) {
   );
 }
 
-export default function InterviewPrep({ onNavigate }) {
+// `preset` comes from cross-links: { analysisId, role } from an ATS report, or
+// { analysisId, jdMatchId, jdTitle } from a JD match. It focuses the next session started.
+export default function InterviewPrep({ onNavigate, preset }) {
+  const presetRef = useRef(preset || {});
+  const [focus, setFocus] = useState(() => {
+    const { analysisId, jdMatchId, jdTitle } = presetRef.current;
+    return analysisId || jdMatchId ? { analysisId, jdMatchId, jdTitle } : null;
+  });
   const [history, setHistory] = useState([]);
   const [hasAnalysis, setHasAnalysis] = useState(true);
   const [session, setSession] = useState(null);
@@ -143,10 +150,11 @@ export default function InterviewPrep({ onNavigate }) {
         setHistory(list);
         setHasAnalysis(Boolean(latestAnalysis));
         const analysisRole = latestAnalysis?.targetRole || latestAnalysis?.bestRole?.role;
-        const defaultRole = list[0]?.role || analysisRole;
-        if (ROLES.some((item) => item.value === defaultRole)) setRole(defaultRole);
-        // Resume the latest unfinished session.
-        if (list[0]?.status === "active") {
+        const want = presetRef.current;
+        const defaultRole = [want.role, list[0]?.role, analysisRole].find((value) => ROLES.some((item) => item.value === value));
+        if (defaultRole) setRole(defaultRole);
+        // Resume the latest unfinished session, unless a cross-link asked for a new focused one.
+        if (list[0]?.status === "active" && !want.analysisId && !want.jdMatchId) {
           const { data } = await axios.get(`${API}/api/interview/${list[0]._id}`, auth());
           if (!active) return;
           setSession(data);
@@ -173,8 +181,12 @@ export default function InterviewPrep({ onNavigate }) {
     setError("");
     setStarting(true);
     try {
-      const { data } = await axios.post(`${API}/api/interview/start`, { role, type, difficulty }, auth());
+      const body = { role, type, difficulty };
+      if (focus?.analysisId) body.analysisId = focus.analysisId;
+      if (focus?.jdMatchId) body.jdMatchId = focus.jdMatchId;
+      const { data } = await axios.post(`${API}/api/interview/start`, body, auth());
       remember(data);
+      setFocus(null);
       setDrafts({});
       setCurrentQid(data.questions[0]?.qid || null);
     } catch (err) {
@@ -258,6 +270,14 @@ export default function InterviewPrep({ onNavigate }) {
         Practise role-specific questions generated from your resume and skill gaps, and get instant AI feedback.
       </p>
       {error && <p role="alert" className="text-red-600 text-sm mb-4">{error}</p>}
+      {focus && (
+        <div aria-live="polite" className="flex flex-wrap items-center gap-3 mb-4 text-sm font-medium" style={{ color: "#3b6ef8" }}>
+          <span>{focus.jdMatchId
+            ? `Your next session targets the job “${focus.jdTitle || "JD match"}”: its missing skills come first.`
+            : "Your next session uses the analysis you just ran."}</span>
+          <button type="button" className="btn-ghost px-3 py-1 rounded-lg text-xs" onClick={() => setFocus(null)}>Clear</button>
+        </div>
+      )}
 
       <form onSubmit={start} className="glass rounded-2xl mb-5 grid gap-3.5 md:grid-cols-[1.2fr_1fr_1fr_auto] items-end" style={{ padding: "18px 22px" }}>
         <div>

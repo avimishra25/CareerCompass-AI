@@ -70,7 +70,16 @@ function parseFeedback(data) {
   };
 }
 
+// Interview readiness from session scores ordered newest first: the mean of the latest 5 and the
+// change versus the 5 before (null when there is no earlier block). Matches the Interview Prep page.
+function readiness(scores) {
+  const latest = scores.slice(0, 5), previous = scores.slice(5, 10);
+  if (!latest.length) return null;
+  const score = mean(latest);
+  return { score, sessions: latest.length, change: previous.length ? round1(score - mean(previous)) : null };
+}
+
 module.exports = {
   SESSION_TYPES, QUESTION_TYPES, DIFFICULTIES, TARGET_KINDS, SCORE_KEYS, STATUSES, LIMITS,
-  chars, mean, extractProjectTitles, validQuestions, parseFeedback,
+  chars, mean, extractProjectTitles, validQuestions, parseFeedback, readiness,
 };

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { TARGET_ROLES } from "../constants/targetRoles";
 
@@ -22,7 +22,11 @@ const defaultRole = (analysis) => {
   return ROLES.some((item) => item.value === role) ? role : ROLES[0].value;
 };
 
-export default function Roadmap({ onNavigate }) {
+// `preset` comes from cross-links: { analysisId, targetRole } from an ATS report, or
+// { analysisId, jdMatchId } from a JD match. It only pre-selects; generating stays a click.
+export default function Roadmap({ onNavigate, preset }) {
+  const presetRef = useRef(preset || {});
+  const [notice, setNotice] = useState("");
   const [analyses, setAnalyses] = useState([]);
   const [matches, setMatches] = useState([]);
   const [roadmap, setRoadmap] = useState(null);
@@ -45,15 +49,26 @@ export default function Roadmap({ onNavigate }) {
       .then(([resumes, jd, latest]) => {
         if (!active) return;
         const list = Array.isArray(resumes.data) ? resumes.data : [];
+        const jdList = Array.isArray(jd.data) ? jd.data : [];
         setAnalyses(list);
-        setMatches(Array.isArray(jd.data) ? jd.data : []);
+        setMatches(jdList);
         const saved = latest.data || null;
         setRoadmap(saved);
-        const analysis = list.find((item) => item._id === saved?.analysisId) || list[0];
+        const want = presetRef.current;
+        const presetAnalysis = list.find((item) => item._id === want.analysisId);
+        const presetMatch = jdList.find((item) => item._id === want.jdMatchId);
+        const analysis = presetAnalysis || list.find((item) => item._id === saved?.analysisId) || list[0];
         setAnalysisId(analysis?._id || "");
-        setTargetRole(saved?.targetRole || defaultRole(analysis));
-        setJdMatchId(saved?.jdMatchId || "");
+        const presetRole = ROLES.some((role) => role.value === want.targetRole) ? want.targetRole : null;
+        setTargetRole(presetRole || (presetAnalysis ? defaultRole(analysis) : saved?.targetRole || defaultRole(analysis)));
+        setJdMatchId(presetMatch ? presetMatch._id : presetAnalysis ? "" : saved?.jdMatchId || "");
         if (saved?.hoursPerWeek) setHours(String(saved.hoursPerWeek));
+        const action = saved ? "Regenerate" : "Generate";
+        if (presetMatch) {
+          setNotice(`JD match “${presetMatch.jdTitle}” is selected. ${action} to add its missing skills to your roadmap.`);
+        } else if (presetAnalysis) {
+          setNotice(`Your analysis “${presetAnalysis.resumeName}” is selected. ${action} to build a roadmap from it.`);
+        }
       })
       .catch((err) => { if (active) setError(errorMessage(err, "Could not load your roadmap.")); })
       .finally(() => { if (active) setLoading(false); });
@@ -72,6 +87,7 @@ export default function Roadmap({ onNavigate }) {
       if (jdMatchId) body.jdMatchId = jdMatchId;
       const { data } = await axios.post(`${API}/api/roadmap`, body, auth());
       setRoadmap(data);
+      setNotice("");
     } catch (err) {
       setError(errorMessage(err, "Roadmap generation unavailable. Try again."));
     } finally {
@@ -112,6 +128,7 @@ export default function Roadmap({ onNavigate }) {
         A week-by-week plan generated from your skill gaps for the target role.
       </p>
       {error && <p role="alert" className="text-red-600 text-sm mb-4">{error}</p>}
+      {notice && <p aria-live="polite" className="text-sm mb-4 font-medium" style={{ color: "#3b6ef8" }}>{notice}</p>}
 
       {loading ? <p role="status" className="text-sm">Loading your roadmap…</p> : !analyses.length ? (
         <div className="glass rounded-2xl p-6">

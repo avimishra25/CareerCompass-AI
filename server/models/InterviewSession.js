@@ -31,6 +31,8 @@ const interviewSessionSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     analysisId: { type: mongoose.Schema.Types.ObjectId, ref: "Analysis", default: null },
+    // Set when the session practises for a saved JD match (its missing skills become the gaps).
+    jdMatchId: { type: mongoose.Schema.Types.ObjectId, ref: "JDMatch", default: null },
     role: { type: String, validate: maxChars(LIMITS.role), required: true },
     type: { type: String, enum: SESSION_TYPES, required: true },
     difficulty: { type: String, enum: DIFFICULTIES, required: true },

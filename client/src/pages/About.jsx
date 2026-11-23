@@ -6,6 +6,11 @@ const timeline = [
   { step:"03", title:"Role Matching",  desc:"Scored against 12 career roles with skill gap analysis and target role benchmarking." },
   { step:"04", title:"Get Report",     desc:"ATS score, ML-powered insights, PDF export, and AI chatbot guidance — all in one view." },
 ];
+const modules = [
+  { emoji:"🗺️", title:"Career Roadmap",    desc:"Your skill gaps (from an analysis and optionally a JD match) become a week-by-week plan, prerequisites first, with free resources. Uploading a resume that shows a skill completes its milestones." },
+  { emoji:"📝", title:"AI Resume Builder", desc:"Section-by-section editor where AI rewrites rough notes into action-verb bullets, rejecting any number you didn't write. A live ATS score updates as you type; export an A4 PDF with selectable text." },
+  { emoji:"🎤", title:"Interview Prep",    desc:"Five questions per session, built from your gaps and projects. Answer by text or voice and get 1–10 scores on relevance, accuracy, structure (STAR), clarity and depth, plus a model answer outline." },
+];
 const techStack = [
   { layer:"Frontend", items:["React.js","Tailwind CSS","Axios","jsPDF","html2canvas"],         color:"#3b6ef8" },
   { layer:"Backend",  items:["Node.js","Express.js","bcryptjs","JWT Auth","Multer","Nodemailer",],         color:"#6c63ff" },
@@ -45,6 +50,23 @@ export default function About() {
                 <div className="text-4xl font-extrabold mb-3 leading-none" style={{color:"rgba(59,110,248,0.15)",fontFamily:'Plus Jakarta Sans,sans-serif'}}>{t.step}</div>
                 <h3 className="font-bold text-sm mb-1.5" style={{color:"var(--text)",fontFamily:'Plus Jakarta Sans,sans-serif'}}>{t.title}</h3>
                 <p className="text-xs leading-relaxed" style={{color:"var(--text-2)",fontFamily:'Plus Jakarta Sans,sans-serif'}}>{t.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Career tools */}
+        <div className="fade-up-1">
+          <h2 className="text-2xl font-bold text-center mb-8" style={{color:"var(--text)",fontFamily:'Plus Jakarta Sans,sans-serif'}}>
+            Then{" "}
+            <span style={{fontFamily:"'Instrument Serif',serif",fontStyle:"italic"}} className="gradient-text">close the gap</span>
+          </h2>
+          <div className="grid md:grid-cols-3 gap-4">
+            {modules.map((m) => (
+              <div key={m.title} className="glass rounded-2xl p-6">
+                <div className="text-2xl mb-3" aria-hidden="true">{m.emoji}</div>
+                <h3 className="font-bold text-sm mb-1.5" style={{color:"var(--text)",fontFamily:'Plus Jakarta Sans,sans-serif'}}>{m.title}</h3>
+                <p className="text-xs leading-relaxed" style={{color:"var(--text-2)",fontFamily:'Plus Jakarta Sans,sans-serif'}}>{m.desc}</p>
               </div>
             ))}
           </div>
@@ -103,7 +125,7 @@ export default function About() {
             <div className="text-3xl mb-3">🚀</div>
             <h3 className="font-bold text-lg mb-2" style={{color:"var(--text)",fontFamily:'Plus Jakarta Sans,sans-serif'}}>Open Source & Growing</h3>
             <p className="text-sm leading-relaxed mb-5" style={{color:"var(--text-2)"}}>
-              ML-powered ATS scoring, PDF reports, resume comparison, and AI chatbot are live. Job description matching and career roadmaps coming next. Star the repo to follow along.
+              ML-powered ATS scoring, JD matching, career roadmaps, the AI resume builder, interview prep, PDF reports, resume comparison and the AI career coach are live. Job and internship recommendations are coming next. Star the repo to follow along.
             </p>
             <a href="https://github.com/avimishra25/CareerCompass-AI" target="_blank" rel="noreferrer"
               className="btn-primary inline-block px-6 py-3 rounded-xl text-sm">

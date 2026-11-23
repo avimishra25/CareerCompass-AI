@@ -84,6 +84,9 @@ const interviewAnswerLimit = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many answers submitted. Try again later." },
 });
+// Flask routes that validate LLM output retry once, and each llm.generate call can make up to
+// 3 SDK requests of 10 s (plus a 1 s backoff), so allow about 2 × 31 s plus headroom.
+const LLM_RETRY_TIMEOUT = 90000;
 const isObjectId = (value) => typeof value === "string" && /^[a-f\d]{24}$/i.test(value);
 // Known-safe ML service messages that may reach the browser; anything else is replaced.
 const SAFE_AI_ERRORS = [
@@ -448,7 +451,7 @@ app.post("/api/roadmap", protect, roadmapLimit, async (req, res) => {
     }
     let result;
     try {
-      const response = await axios.post(`${ML_URL}/roadmap`, payload, { headers: internalHeaders(), timeout: 90000 });
+      const response = await axios.post(`${ML_URL}/roadmap`, payload, { headers: internalHeaders(), timeout: LLM_RETRY_TIMEOUT });
       result = response.data;
       if (!validRoadmapResult(result)) return res.status(503).json({ error: "Roadmap generation unavailable" });
     } catch (error) {
@@ -590,7 +593,7 @@ app.post("/api/resume-builder/enhance", protect, enhanceLimit, async (req, res) 
   const { section, title, notes, tone } = req.body;
   try {
     const response = await axios.post(`${ML_URL}/resume/enhance`, { section, title, notes, tone }, {
-      headers: internalHeaders(), timeout: 60000,
+      headers: internalHeaders(), timeout: LLM_RETRY_TIMEOUT,
     });
     const bullets = response.data?.bullets;
     if (!Array.isArray(bullets) || bullets.length < 2 || bullets.length > 4 ||
@@ -667,29 +670,45 @@ const aiFailure = (res, error, fallback) => {
 app.post("/api/interview/start", protect, interviewStartLimit, async (req, res) => {
   const data = req.body;
   if (!data || typeof data !== "object" || Array.isArray(data) ||
-      Object.keys(data).some((key) => !["role", "type", "difficulty", "analysisId"].includes(key)) ||
+      Object.keys(data).some((key) => !["role", "type", "difficulty", "analysisId", "jdMatchId"].includes(key)) ||
       !ROADMAP_ROLES.includes(data.role) || !interview.SESSION_TYPES.includes(data.type) ||
       !interview.DIFFICULTIES.includes(data.difficulty) ||
-      (data.analysisId !== undefined && data.analysisId !== null && !isObjectId(data.analysisId))) {
+      (data.analysisId !== undefined && data.analysisId !== null && !isObjectId(data.analysisId)) ||
+      (data.jdMatchId !== undefined && data.jdMatchId !== null && !isObjectId(data.jdMatchId))) {
     return res.status(400).json({ error: "Invalid interview payload" });
   }
   try {
-    // An explicit analysis must be the caller's; otherwise use their latest one (or none).
-    const analysis = data.analysisId
-      ? await Analysis.findOne({ _id: data.analysisId, user: req.user._id }).select("+resumeText")
-      : await Analysis.findOne({ user: req.user._id }).sort({ createdAt: -1 }).select("+resumeText");
-    if (data.analysisId && !analysis) return res.status(404).json({ error: "Analysis not found" });
+    let jdMatch = null;
+    if (data.jdMatchId) {
+      jdMatch = await JDMatch.findOne({ _id: data.jdMatchId, userId: req.user._id });
+      if (!jdMatch) return res.status(404).json({ error: "JD match not found" });
+    }
+    // An explicit analysis must be the caller's. Otherwise use the JD match's analysis if it still
+    // exists, then the caller's latest analysis (or none).
+    let analysis = null;
+    if (data.analysisId) {
+      analysis = await Analysis.findOne({ _id: data.analysisId, user: req.user._id }).select("+resumeText");
+      if (!analysis) return res.status(404).json({ error: "Analysis not found" });
+    } else {
+      if (jdMatch?.analysisId) {
+        analysis = await Analysis.findOne({ _id: String(jdMatch.analysisId), user: req.user._id }).select("+resumeText");
+      }
+      analysis ||= await Analysis.findOne({ user: req.user._id }).sort({ createdAt: -1 }).select("+resumeText");
+    }
     const roleMatch = typeof analysis?.match?.get === "function" ? analysis.match.get(data.role) : analysis?.match?.[data.role];
     const skills = skillList(analysis?.skills, interview.LIMITS.skills);
     const known = new Set(skills.map((skill) => skill.toLowerCase()));
+    // A JD's missing skills come first, so a session for that job targets its gaps.
+    const gaps = [...new Map([...skillList(jdMatch?.result?.missing_skills, interview.LIMITS.gaps),
+      ...skillList(roleMatch?.missing, interview.LIMITS.gaps)].map((skill) => [skill.toLowerCase(), skill])).values()]
+      .filter((skill) => !known.has(skill.toLowerCase())).slice(0, interview.LIMITS.gaps);
     const payload = {
-      role: data.role, type: data.type, difficulty: data.difficulty, resume_skills: skills,
-      gaps: skillList(roleMatch?.missing, interview.LIMITS.gaps).filter((skill) => !known.has(skill.toLowerCase())),
+      role: data.role, type: data.type, difficulty: data.difficulty, resume_skills: skills, gaps,
       projects: interview.extractProjectTitles(analysis?.resumeText), count: INTERVIEW_QUESTION_COUNT,
     };
     let questions;
     try {
-      const response = await axios.post(`${ML_URL}/interview/questions`, payload, { headers: internalHeaders(), timeout: 60000 });
+      const response = await axios.post(`${ML_URL}/interview/questions`, payload, { headers: internalHeaders(), timeout: LLM_RETRY_TIMEOUT });
       if (!interview.validQuestions(response.data, data.type, INTERVIEW_QUESTION_COUNT)) {
         return res.status(503).json({ error: "Interview questions unavailable" });
       }
@@ -698,7 +717,8 @@ app.post("/api/interview/start", protect, interviewStartLimit, async (req, res) 
       return aiFailure(res, error, "Interview questions unavailable");
     }
     const session = await InterviewSession.create({
-      userId: req.user._id, analysisId: analysis?._id || null, role: data.role, type: data.type, difficulty: data.difficulty,
+      userId: req.user._id, analysisId: analysis?._id || null, jdMatchId: jdMatch?._id || null,
+      role: data.role, type: data.type, difficulty: data.difficulty,
       questions: questions.map(({ id, text, type, targets, target_kind }) => ({ qid: id, text, type, targets, targetKind: target_kind })),
     });
     res.status(201).json(session);
@@ -748,7 +768,7 @@ app.post("/api/interview/:id/answer", protect, interviewAnswerLimit, async (req,
     try {
       const response = await axios.post(`${ML_URL}/interview/evaluate`,
         { question: question.text, type: question.type, role: session.role, answer },
-        { headers: internalHeaders(), timeout: 30000 });
+        { headers: internalHeaders(), timeout: LLM_RETRY_TIMEOUT });
       feedback = interview.parseFeedback(response.data);
       if (!feedback) return res.status(503).json({ error: "Answer evaluation unavailable" });
     } catch (error) {
@@ -775,6 +795,54 @@ app.post("/api/interview/:id/answer", protect, interviewAnswerLimit, async (req,
     res.json(saved);
   } catch {
     res.status(500).json({ error: "Could not save answer" });
+  }
+});
+
+// ─── Dashboard summary ────────────────────────────────────────
+// Every dashboard number in one owner-scoped request (four small projected queries).
+app.get("/api/dashboard/summary", protect, async (req, res) => {
+  try {
+    const [analyses, matches, roadmap, sessions] = await Promise.all([
+      Analysis.find({ user: req.user._id }).select("atsScore bestRole createdAt").sort({ createdAt: -1 }).lean(),
+      JDMatch.find({ userId: req.user._id }).select("result.overall_match").lean(),
+      CareerRoadmap.findOne({ userId: req.user._id }).select("targetRole covered milestones").sort({ createdAt: -1 }).lean(),
+      InterviewSession.find({ userId: req.user._id, overallScore: { $ne: null } }).select("overallScore")
+        .sort({ createdAt: -1 }).limit(10).lean(),
+    ]);
+    const atsScores = analyses.map((item) => item.atsScore).filter(Number.isFinite);
+    const roleCounts = new Map();
+    for (const item of analyses) {
+      const role = item.bestRole?.role;
+      if (typeof role === "string" && role) roleCounts.set(role, (roleCounts.get(role) || 0) + 1);
+    }
+    // Ties go to the role matched most recently (Map keeps insertion order; sort is stable).
+    const topRole = [...roleCounts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    const matchScores = matches.map((item) => item.result?.overall_match).filter(Number.isFinite);
+    const milestones = roadmap?.milestones || [];
+    const done = milestones.filter((item) => item.status === "done").length;
+    const next = [...milestones].sort((a, b) => a.week - b.week).find((item) => item.status !== "done");
+    const scores = sessions.map((item) => item.overallScore).filter(Number.isFinite);
+    const ready = interview.readiness(scores);
+    res.json({
+      analyses: {
+        count: analyses.length,
+        averageAts: atsScores.length ? Math.round(atsScores.reduce((sum, value) => sum + value, 0) / atsScores.length) : null,
+        latestAts: atsScores[0] ?? null,
+        topRole,
+        latestAnalysisId: analyses[0]?._id ?? null,
+        latestAnalysisAt: analyses[0]?.createdAt ?? null,
+      },
+      jdMatches: { count: matches.length, best: matchScores.length ? Math.max(...matchScores) : null },
+      roadmap: roadmap ? {
+        id: roadmap._id, targetRole: roadmap.targetRole, covered: Boolean(roadmap.covered),
+        total: milestones.length, done,
+        completion: milestones.length ? Math.round((done / milestones.length) * 100) : roadmap.covered ? 100 : 0,
+        nextMilestone: next ? { week: next.week, skill: next.skill, objective: next.objective, status: next.status } : null,
+      } : null,
+      interview: ready ? { readiness: ready.score, sessions: ready.sessions, change: ready.change, lastScore: scores[0] } : null,
+    });
+  } catch {
+    res.status(500).json({ error: "Could not load dashboard" });
   }
 });
 

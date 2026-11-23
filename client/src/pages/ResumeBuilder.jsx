@@ -153,7 +153,8 @@ function Preview({ draft, highlighted }) {
   );
 }
 
-export default function ResumeBuilder() {
+export default function ResumeBuilder({ onNavigate }) {
+  const [exported, setExported] = useState(null);
   const [drafts, setDrafts] = useState([]);
   const [draft, setDraft] = useState(emptyDraft);
   const [active, setActive] = useState("contact");
@@ -334,10 +335,13 @@ export default function ResumeBuilder() {
     }
   };
 
+  // An exported PDF only matches the draft until the next edit.
+  useEffect(() => { setExported(null); }, [draft]);
+
   const exportPdf = async () => {
     setError("");
     try {
-      await exportResumePdf(draft);
+      setExported((await exportResumePdf(draft)) || null);
     } catch {
       setError("Could not create the PDF. Try again.");
     }
@@ -533,6 +537,16 @@ export default function ResumeBuilder() {
                 ⬇ Export PDF
               </button>
             </div>
+            {exported && onNavigate && (
+              <div className="glass rounded-2xl flex flex-wrap items-center justify-between gap-3" style={{ padding: "14px 18px" }} aria-live="polite">
+                <span style={{ fontSize: "12.5px", color: "var(--text-2)" }}>
+                  Downloaded <strong>{exported.name}</strong>. Run the full analysis on it to unlock JD matching, a roadmap and interview practice.
+                </span>
+                <button type="button" className="btn-primary rounded-xl px-4 py-2 text-sm" onClick={() => onNavigate("analyze", { file: exported })}>
+                  Analyze this resume →
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

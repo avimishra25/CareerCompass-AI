@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axios from "axios";
 import Roadmap from "./Roadmap";
 
@@ -50,6 +50,34 @@ test("renders saved milestones and summary; status badge cycles via PATCH", asyn
   expect(await screen.findByRole("button", { name: "Week 3 status: In progress. Change status" })).toBeInTheDocument();
   expect(axios.patch).toHaveBeenCalledWith(expect.stringContaining("/api/roadmap/roadmap/milestone/m3"),
     { status: "progress" }, { headers: { Authorization: "Bearer test-token" } });
+});
+
+test("a cross-link pre-selects the analysis, role and JD match without generating", async () => {
+  const analyses = [
+    { _id: "analysis", resumeName: "resume.pdf", createdAt: "2026-10-05", bestRole: { role: "devops engineer" } },
+    { _id: "new", resumeName: "new.pdf", createdAt: "2026-11-20", bestRole: { role: "backend developer" } },
+  ];
+  axios.get.mockImplementation((url) => Promise.resolve({ data: url.endsWith("/api/roadmap") ? roadmap
+    : url.endsWith("jd-match/history") ? [{ _id: "jd", jdTitle: "Platform intern", result: { overall_match: 40 } }] : analyses }));
+  axios.post.mockResolvedValue({ data: roadmap });
+  const { unmount } = render(<Roadmap onNavigate={jest.fn()} preset={{ analysisId: "new", jdMatchId: "jd" }} />);
+  expect(await screen.findByText("JD match “Platform intern” is selected. Regenerate to add its missing skills to your roadmap.")).toBeInTheDocument();
+  expect(screen.getByLabelText("Analysis")).toHaveValue("new");
+  expect(screen.getByLabelText("JD match (optional)")).toHaveValue("jd");
+  // With no role in the link, the role follows the pre-selected analysis, not the saved roadmap.
+  expect(screen.getByLabelText("Target role")).toHaveValue("backend developer");
+  expect(axios.post).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Regenerate ↻" }));
+  await waitFor(() => expect(axios.post).toHaveBeenCalledWith(expect.stringContaining("/api/roadmap"),
+    { analysisId: "new", targetRole: "backend developer", hoursPerWeek: 8, jdMatchId: "jd" }, expect.anything()));
+  await waitFor(() => expect(screen.queryByText(/is selected/)).not.toBeInTheDocument());
+  unmount();
+
+  // From an ATS report: analysis + target role, and no JD match carried over from the saved roadmap.
+  render(<Roadmap onNavigate={jest.fn()} preset={{ analysisId: "new", targetRole: "cloud architect" }} />);
+  expect(await screen.findByText("Your analysis “new.pdf” is selected. Regenerate to build a roadmap from it.")).toBeInTheDocument();
+  expect(screen.getByLabelText("Target role")).toHaveValue("cloud architect");
+  expect(screen.getByLabelText("JD match (optional)")).toHaveValue("");
 });
 
 test("generate sends selected options; API errors are shown", async () => {

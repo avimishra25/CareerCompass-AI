@@ -78,7 +78,7 @@ test("InterviewSession schema bounds scores, enums and question count", async ()
 });
 
 test("Interview HTTP flow", async (t) => {
-  const owner = "a".repeat(24), other = "b".repeat(24), analysisId = "c".repeat(24);
+  const owner = "a".repeat(24), other = "b".repeat(24), analysisId = "c".repeat(24), jdMatchId = "d".repeat(24);
   const env = { JWT_SECRET: "test-only-secret", INTERNAL_API_KEY: "test-only-key" };
   const authModule = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "middleware/auth.js"), "utf8"), {
@@ -117,6 +117,10 @@ test("Interview HTTP flow", async (t) => {
         const found = async () => filter.user === owner && (!filter._id || filter._id === analysisId) ? analysis : null;
         return { select: found, sort: () => ({ select: found }) };
       },
+    },
+    "./models/JDMatch": {
+      findOne: async (filter) => filter.userId === owner && filter._id === jdMatchId
+        ? { _id: jdMatchId, analysisId, result: { missing_skills: ["kubernetes", "Redis", "react"] } } : null,
     },
     "./models/InterviewSession": {
       create: async (data) => {
@@ -219,6 +223,21 @@ test("Interview HTTP flow", async (t) => {
       assert.equal((await request("POST", "/start", { ...start, analysisId })).status, 201);
     });
 
+    await t.test("a JD match puts that job's missing skills first and must be the caller's", async () => {
+      assert.equal((await request("POST", "/start", { ...start, jdMatchId: "bad" }, "9".repeat(24))).status, 400);
+      const before = calls;
+      assert.equal((await request("POST", "/start", { ...start, jdMatchId }, other)).status, 404);
+      assert.equal(calls, before);
+      const response = await request("POST", "/start", { ...start, jdMatchId });
+      assert.equal(response.status, 201);
+      // JD gaps first, then the role's; deduplicated case-insensitively; known skills (react) removed.
+      assert.equal(JSON.stringify(questionsCall.payload.gaps), JSON.stringify(["kubernetes", "redis", "docker"]));
+      assert.equal(JSON.stringify(questionsCall.payload.projects), JSON.stringify(["Expense Tracker", "Portfolio Website"]));
+      const session = await response.json();
+      assert.equal(session.jdMatchId, jdMatchId);
+      assert.equal(session.analysisId, analysisId, "uses the JD match's analysis");
+    });
+
     await t.test("invalid or failing question generation returns safe JSON", async () => {
       questionsResponse = () => ({ data: flaskQuestions({ type: "hr" }) });
       let response = await request("POST", "/start", start, "3".repeat(24));
@@ -232,6 +251,18 @@ test("Interview HTTP flow", async (t) => {
       response = await request("POST", "/start", start, "3".repeat(24));
       assert.equal(response.status, 503);
       assert.doesNotMatch(await response.text(), /private/);
+      // Quota exhaustion reaches the user as Flask's safe 503 message.
+      const quota = "AI quota exhausted or rate limit reached. Try again later.";
+      questionsResponse = () => { throw { response: { status: 503, data: { error: quota } } }; };
+      response = await request("POST", "/start", start, "3".repeat(24));
+      assert.equal(response.status, 503);
+      assert.deepEqual(await response.json(), { error: quota });
+      // A timed-out Flask call (no response) degrades to the generic message.
+      questionsResponse = () => { throw Object.assign(new Error("timeout of 90000ms exceeded"), { code: "ECONNABORTED" }); };
+      response = await request("POST", "/start", start, "3".repeat(24));
+      assert.equal(response.status, 503);
+      assert.deepEqual(await response.json(), { error: "Interview questions unavailable" });
+      assert.equal(questionsCall.options.timeout, 90000);
       questionsResponse = () => ({ data: flaskQuestions() });
     });
 
@@ -273,6 +304,13 @@ test("Interview HTTP flow", async (t) => {
       assert.equal(invalid.status, 503);
       assert.deepEqual(await invalid.json(), { error: "Answer evaluation unavailable" });
       assert.equal(sessions.get(sessionId).questions[2].answeredAt, before);
+      const quota = "AI quota exhausted or rate limit reached. Try again later.";
+      evaluateResponse = () => { throw { response: { status: 503, data: { error: quota } } }; };
+      const limited = await request("POST", `/${sessionId}/answer`, { qid: "q3", answer: longAnswer });
+      assert.equal(limited.status, 503);
+      assert.deepEqual(await limited.json(), { error: quota });
+      assert.equal(sessions.get(sessionId).questions[2].answeredAt, before);
+      assert.equal(evaluateCall.options.timeout, 90000);
     });
 
     await t.test("session completes when every question is answered", async () => {

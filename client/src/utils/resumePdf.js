@@ -81,5 +81,8 @@ export async function exportResumePdf(draft) {
   if (s.achievements.length) { heading("ACHIEVEMENTS"); s.achievements.forEach(bullet); }
 
   const name = (s.contact.name || draft.title || "resume").replace(/[^\w-]+/g, "_").slice(0, 60);
-  doc.save(`${name}_Resume.pdf`);
+  const fileName = `${name}_Resume.pdf`;
+  doc.save(fileName);
+  // Returned so the builder can hand the same PDF to Analyze without a re-upload.
+  return new File([doc.output("blob")], fileName, { type: "application/pdf" });
 }

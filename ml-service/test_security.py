@@ -65,13 +65,24 @@ class SecurityTests(unittest.TestCase):
     def chat(self, data):
         return self.http.post("/agent/gap", headers=self.headers, json=data)
 
+    def routes(self):
+        """Every route registered in app.py (read from the URL map, so new routes are covered automatically)."""
+        return [(rule.rule, method) for rule in self.ns["app"].url_map.iter_rules() if rule.endpoint != "static"
+                for method in sorted(rule.methods - {"HEAD", "OPTIONS"})]
+
     def test_key_required_everywhere_except_health(self):
-        for endpoint in ["/analyze", "/agent/gap", "/retrain", "/roadmap", "/resume/enhance",
-                         "/resume/score", "/interview/questions", "/interview/evaluate", "/unknown"]:
+        routes = self.routes()
+        for expected in ["/jd-match", "/roadmap", "/resume/enhance", "/resume/score", "/interview/questions",
+                         "/interview/evaluate"]:
+            self.assertIn((expected, "POST"), routes)
+        self.assertIn(("/health", "GET"), routes)
+        protected = [route for route in routes if route[0] != "/health"] + [("/unknown", "POST")]
+        for endpoint, method in protected:
             for headers in [{}, {"X-Internal-Key": "wrong"}]:
-                response = self.http.post(endpoint, headers=headers)
-                self.assertEqual(response.status_code, 401)
-                self.assertTrue(response.is_json)
+                with self.subTest(endpoint=endpoint, headers=headers):
+                    response = self.http.open(endpoint, method=method, headers=headers)
+                    self.assertEqual(response.status_code, 401)
+                    self.assertTrue(response.is_json)
         self.assertEqual(self.http.get("/health").status_code, 200)
         self.ns["train_ats_model"].assert_not_called()
         self.assertEqual(self.http.post("/retrain", headers=self.headers).status_code, 200)
@@ -83,8 +94,9 @@ class SecurityTests(unittest.TestCase):
                 os.environ.pop("INTERNAL_API_KEY", None)
             else:
                 os.environ["INTERNAL_API_KEY"] = value
-            for endpoint in ["/retrain", "/analyze", "/agent/gap"]:
-                self.assertEqual(self.http.post(endpoint, headers=self.headers).status_code, 403)
+            for endpoint, method in self.routes():
+                if endpoint != "/health":
+                    self.assertEqual(self.http.open(endpoint, method=method, headers=self.headers).status_code, 403)
             self.assertEqual(self.http.get("/health").status_code, 200)
 
     def test_upload_size_type_and_magic(self):

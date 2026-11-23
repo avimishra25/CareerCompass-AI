@@ -259,9 +259,10 @@ class RouteTests(unittest.TestCase):
 
     def test_provider_errors_are_sanitised(self):
         self.fake.side_effect = LLMError("AI quota exhausted or rate limit reached. Try again later.")
-        response = self.post("/interview/evaluate", evaluate_payload())
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json["error"], "AI quota exhausted or rate limit reached. Try again later.")
+        for path, data in [("/interview/questions", questions_payload()), ("/interview/evaluate", evaluate_payload())]:
+            response = self.post(path, data)
+            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.json["error"], "AI quota exhausted or rate limit reached. Try again later.")
         self.fake.side_effect = LLMError("AI returned invalid JSON after one retry.")
         self.assertEqual(self.post("/interview/questions", questions_payload()).status_code, 502)
         self.fake.side_effect = RuntimeError("private provider detail")

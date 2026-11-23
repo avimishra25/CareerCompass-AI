@@ -8,8 +8,10 @@ import { TARGET_ROLES } from "../constants/targetRoles";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
-export default function UploadResume() {
-  const [file,             setFile]             = useState(null);
+export default function UploadResume({ onNavigate, presetFile = null }) {
+  // A PDF exported from the Resume Builder can be handed over for analysis.
+  const [file,             setFile]             = useState(presetFile);
+  const [analysisId,       setAnalysisId]        = useState(null);
   const [isDragging,       setDragging]          = useState(false);
   const [targetRole,       setTargetRole]        = useState("");
   const [skills,           setSkills]            = useState([]);
@@ -42,6 +44,7 @@ export default function UploadResume() {
       setSkills([]); setMatchData({}); setBestRole(null);
       setAtsScore(null); setAtsBreakdown({}); setTargetRoleData(null);
       setMlInsights(null);   // ← NEW: reset on each upload
+      setAnalysisId(null);
 
       const res = await axios.post(`${API}/upload`, fd, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -54,6 +57,7 @@ export default function UploadResume() {
       setAtsBreakdown(res.data.atsBreakdown  || {});
       setTargetRoleData(res.data.targetRoleAnalysis || null);
       setMlInsights(res.data.mlInsights      || null);   // ← NEW
+      setAnalysisId(res.data.analysisId      || null);
     } catch (err) {
       if (err.response?.status === 401) { localStorage.removeItem("token"); window.location.reload(); }
       setError("Upload failed. Is the NLP server running?");
@@ -105,6 +109,8 @@ export default function UploadResume() {
   };
 
   const hasResults = skills.length > 0 || Object.keys(matchData).length > 0;
+  // Cross-links pre-select this analysis and the target (or best-matched) role.
+  const nextRole = targetRole || bestRole?.role || "";
 
   return (
     <section className="py-8 px-6">
@@ -202,6 +208,12 @@ export default function UploadResume() {
               </>
             )}
           </div>
+
+          {presetFile && file === presetFile && !hasResults && (
+            <p className="mt-3 text-xs" style={{ color: "#3b6ef8", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+              Your Resume Builder PDF is attached. Pick a target role if you like, then click Analyze.
+            </p>
+          )}
 
           {error && (
             <div className="mt-4 rounded-xl px-4 py-3 text-sm"
@@ -324,6 +336,26 @@ export default function UploadResume() {
                   atsBreakdown={atsBreakdown}
                   mlInsights={mlInsights}
                 />
+              )}
+
+              {/* Next steps — skipped by html2canvas so they never appear in the PDF report */}
+              {analysisId && onNavigate && (
+                <div data-html2canvas-ignore="true" aria-label="Next steps" role="group"
+                  className="glass rounded-2xl p-5 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm" style={{ color: "var(--text-2)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
+                    Next: close the gaps{nextRole ? <> for <strong className="capitalize">{nextRole}</strong></> : ""} and practise for interviews.
+                  </p>
+                  <div className="flex flex-wrap gap-2.5">
+                    <button type="button" className="btn-primary px-4 py-2.5 rounded-xl text-sm"
+                      onClick={() => onNavigate("roadmap", { analysisId, targetRole: nextRole })}>
+                      🗺️ Build my roadmap
+                    </button>
+                    <button type="button" className="btn-ghost px-4 py-2.5 rounded-xl text-sm"
+                      onClick={() => onNavigate("interview", { analysisId, role: nextRole })}>
+                      🎤 Practise interview
+                    </button>
+                  </div>
+                </div>
               )}
 
               <div className="grid md:grid-cols-2 gap-5">

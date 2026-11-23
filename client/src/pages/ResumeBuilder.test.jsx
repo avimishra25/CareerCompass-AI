@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axios from "axios";
 import ResumeBuilder from "./ResumeBuilder";
+import { exportResumePdf } from "../utils/resumePdf";
 
 jest.mock("axios");
 jest.mock("../utils/resumePdf", () => ({ exportResumePdf: jest.fn() }));
@@ -47,6 +48,21 @@ test("enhance project notes, accept the suggestion, and see it in the preview", 
   await waitFor(() => expect(axios.post).toHaveBeenCalledWith(expect.stringContaining("/api/resume-builder/score"),
     { text: expect.stringContaining(suggestion[1]) }, expect.anything()), { timeout: 3000 });
   expect(await screen.findByRole("img", { name: "ATS score 64 out of 100" })).toBeInTheDocument();
+});
+
+test("after export, 'Analyze this resume' hands the same PDF to Analyze; editing hides it", async () => {
+  const pdf = new File(["%PDF-1.3"], "Test_User_Resume.pdf", { type: "application/pdf" });
+  exportResumePdf.mockResolvedValue(pdf);
+  const onNavigate = jest.fn();
+  render(<ResumeBuilder onNavigate={onNavigate} />);
+  fireEvent.change(await screen.findByLabelText("Full name"), { target: { value: "Test User" } });
+  expect(screen.queryByRole("button", { name: "Analyze this resume →" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "⬇ Export PDF" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Analyze this resume →" }));
+  expect(exportResumePdf).toHaveBeenCalledTimes(1);
+  expect(onNavigate).toHaveBeenCalledWith("analyze", { file: pdf });
+  fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Test User 2" } });
+  expect(screen.queryByRole("button", { name: "Analyze this resume →" })).not.toBeInTheDocument();
 });
 
 test("edited suggestion is what gets accepted; API errors are shown", async () => {

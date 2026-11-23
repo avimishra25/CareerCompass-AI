@@ -109,9 +109,31 @@ export default function CareerAgent({ skills, atsScore, atsBreakdown, bestRole, 
   ]);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState("");
+  // Roadmap and interview progress from the dashboard summary; null until loaded (or if it fails).
+  const [progress, setProgress] = useState(null);
   const bottomRef = useRef(null);
   const inputRef  = useRef(null);
   const token     = localStorage.getItem("token");
+
+  useEffect(() => {
+    let active = true;
+    Promise.resolve()
+      .then(() => axios.get(`${API}/api/dashboard/summary`, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } }))
+      .then(({ data }) => {
+        if (!active) return;
+        const next = data?.roadmap?.nextMilestone;
+        setProgress({
+          roadmap: data?.roadmap ? {
+            targetRole: data.roadmap.targetRole, completion: data.roadmap.completion,
+            nextMilestone: next ? { week: next.week, skill: next.skill, objective: next.objective } : null,
+          } : null,
+          lastInterviewScore: data?.interview?.lastScore ?? null,
+          interviewReadiness: data?.interview?.readiness ?? null,
+        });
+      })
+      .catch(() => {}); // The coach still works with resume context only.
+    return () => { active = false; };
+  }, []);
 
   // Auto-scroll
   useEffect(() => {
@@ -139,7 +161,7 @@ export default function CareerAgent({ skills, atsScore, atsBreakdown, bestRole, 
 
     // Include resume context on every turn, including after clearing the chat.
     // Split context into validated user messages without dropping any insights.
-    const context = [...JSON.stringify({ skills, atsScore, atsBreakdown, bestRole, matchData, targetRole, mlInsights })];
+    const context = [...JSON.stringify({ skills, atsScore, atsBreakdown, bestRole, matchData, targetRole, mlInsights, careerProgress: progress })];
     const history = [];
     for (let i = 0; i < context.length; i += 1800) {
       history.push({ role: "user", content: `Resume analysis context (part ${Math.floor(i / 1800) + 1}):\n${context.slice(i, i + 1800).join("")}` });
@@ -274,7 +296,9 @@ export default function CareerAgent({ skills, atsScore, atsBreakdown, bestRole, 
               { label: `${skills?.length || 0} skills`, color: "#3b6ef8" },
               { label: `ATS ${atsScore || 0}/100`,      color: atsScore >= 75 ? "#10b981" : atsScore >= 50 ? "#3b6ef8" : "#f59e0b" },
               { label: bestRole?.role || "—",            color: "#6c63ff" },
-            ].map((p) => (
+              progress?.roadmap?.nextMilestone && { label: `Next: ${progress.roadmap.nextMilestone.skill}`, color: "#0ea5c9" },
+              progress?.lastInterviewScore != null && { label: `Interview ${progress.lastInterviewScore.toFixed(1)}/10`, color: "#10b981" },
+            ].filter(Boolean).map((p) => (
               <span key={p.label} style={{
                 fontSize: "0.65rem", fontWeight: 600, padding: "2px 8px",
                 borderRadius: 999, background: `${p.color}12`,

@@ -46,6 +46,21 @@ beforeEach(() => {
     item.qid === "q2" ? { ...item, ...feedback } : item) } });
 });
 
+test("a JD cross-link focuses the next session instead of resuming the active one", async () => {
+  axios.post.mockResolvedValue({ data: { ...session, _id: "s2" } });
+  render(<InterviewPrep onNavigate={jest.fn()} preset={{ jdMatchId: "jd1", jdTitle: "Platform intern" }} />);
+  expect(screen.getByText(/targets the job “Platform intern”/)).toBeInTheDocument();
+  await screen.findByRole("region", { name: "Interview readiness" });
+  expect(screen.queryByRole("article", { name: "Current question" })).not.toBeInTheDocument();
+  expect(axios.get).not.toHaveBeenCalledWith(expect.stringContaining("/api/interview/s1"), expect.anything());
+  fireEvent.click(screen.getByRole("button", { name: "Start new session" }));
+  expect(await screen.findByRole("article", { name: "Current question" })).toBeInTheDocument();
+  expect(axios.post).toHaveBeenCalledWith(expect.stringContaining("/api/interview/start"),
+    { role: "fullstack developer", type: "mixed", difficulty: "intermediate", jdMatchId: "jd1" },
+    { headers: { Authorization: "Bearer test-token" } });
+  expect(screen.queryByText(/targets the job/)).not.toBeInTheDocument();
+});
+
 test("submitting an answer shows the score ring, rubric bars, feedback and next question", async () => {
   render(<InterviewPrep onNavigate={jest.fn()} />);
 

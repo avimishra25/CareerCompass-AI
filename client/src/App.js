@@ -30,12 +30,16 @@ function AppInner() {
   });
 
   const [compareData, setCompareData] = useState({ analysisA: null, analysisB: null });
+  // One-shot hand-off for cross-links (e.g. { analysisId, targetRole } for Roadmap). Every
+  // navigation replaces it, so a later plain visit never reuses stale pre-selections.
+  const [pageData, setPageData] = useState({});
   const uploadRef = useRef(null);
 
   const navigate = (page, data = {}) => {
     if (page === "compare" && data.analysisA && data.analysisB) {
       setCompareData({ analysisA: data.analysisA, analysisB: data.analysisB });
     }
+    setPageData(data);
     setCurrentPage(page);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -154,16 +158,16 @@ function AppInner() {
             </p>
           </div>
           <div ref={uploadRef}>
-            <UploadResume />
+            <UploadResume onNavigate={navigate} presetFile={pageData.file} />
           </div>
         </div>
       }
 
       {currentPage === "history" && <History onNavigate={navigate} />}
       {currentPage === "jd-match" && <JDMatch onNavigate={navigate} />}
-      {currentPage === "roadmap" && <Roadmap onNavigate={navigate} />}
+      {currentPage === "roadmap" && <Roadmap onNavigate={navigate} preset={pageData} />}
       {currentPage === "resume-builder" && <ResumeBuilder onNavigate={navigate} />}
-      {currentPage === "interview" && <InterviewPrep onNavigate={navigate} />}
+      {currentPage === "interview" && <InterviewPrep onNavigate={navigate} preset={pageData} />}
       {currentPage === "compare" &&
         <Compare
           analysisA={compareData.analysisA}

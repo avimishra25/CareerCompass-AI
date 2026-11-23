@@ -97,6 +97,19 @@ export default function JDMatch({ onNavigate }) {
             </div></div>
           ))}
           <p className="text-xs">Skills reflect text mentions, not proven ability. Missing skills appear by JD frequency; keyword gaps by TF-IDF weight.</p>
+          <div className="flex flex-wrap gap-2.5" role="group" aria-label="Next steps">
+            {result.missing_skills.length > 0 && (
+              <button type="button" className="btn-primary px-4 py-2.5 rounded-xl text-sm"
+                onClick={() => onNavigate("roadmap", { analysisId: String(selected.analysisId), jdMatchId: selected._id })}>
+                🗺️ Add these gaps to my roadmap
+              </button>
+            )}
+            {/* Only the JD match is sent: the server uses its analysis, or your latest one if that was deleted. */}
+            <button type="button" className="btn-ghost px-4 py-2.5 rounded-xl text-sm"
+              onClick={() => onNavigate("interview", { jdMatchId: selected._id, jdTitle: selected.jdTitle })}>
+              🎤 Practise interview for this job
+            </button>
+          </div>
         </section>}
         <section className="glass rounded-2xl p-6 space-y-4" aria-label="JD match history">
           <h2 className="text-xl font-bold">Match history</h2>

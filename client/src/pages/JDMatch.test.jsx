@@ -1,10 +1,8 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axios from "axios";
 import JDMatch from "./JDMatch";
-import Dashboard from "./Dashboard";
 
 jest.mock("axios");
-jest.mock("../context/AuthContext", () => ({ useAuth: () => ({ user: { name: "Test User" } }) }));
 const match = { _id: "match", jdTitle: "Backend", createdAt: "2026-10-05", result: {
   overall_match: 85, verdict: "Strong", matched_skills: ["python"], missing_skills: ["docker"],
   extra_skills: ["react"], keyword_gaps: ["deployment"],
@@ -55,13 +53,24 @@ test("load failure is visible", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("Could not load JD matching.");
 });
 
-test("dashboard shows JD count and best score and links to JD Match", async () => {
+test("a match result links to the roadmap (with its gaps) and to interview practice for the job", async () => {
   axios.get.mockImplementation((url) => Promise.resolve({ data: url.endsWith("jd-match/history")
-    ? [match, { ...match, result: { ...match.result, overall_match: 60 } }] : [] }));
+    ? [{ ...match, analysisId: "analysis" }] : [{ _id: "analysis", resumeName: "resume.pdf", createdAt: "2026-10-05" }] }));
   const onNavigate = jest.fn();
-  render(<Dashboard onNavigate={onNavigate} />);
-  expect(await screen.findByText("85/100")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "2 JD Matches" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "85/100 Best JD Match" }));
-  expect(onNavigate).toHaveBeenCalledWith("jd-match");
+  render(<JDMatch onNavigate={onNavigate} />);
+  fireEvent.click(await screen.findByRole("button", { name: /Backend.*85\/100/ }));
+  const steps = within(screen.getByRole("region", { name: "Match result" })).getByRole("group", { name: "Next steps" });
+  fireEvent.click(within(steps).getByRole("button", { name: "🗺️ Add these gaps to my roadmap" }));
+  expect(onNavigate).toHaveBeenLastCalledWith("roadmap", { analysisId: "analysis", jdMatchId: "match" });
+  fireEvent.click(within(steps).getByRole("button", { name: "🎤 Practise interview for this job" }));
+  expect(onNavigate).toHaveBeenLastCalledWith("interview", { jdMatchId: "match", jdTitle: "Backend" });
+});
+
+test("no roadmap link when the job has no missing skills", async () => {
+  axios.get.mockImplementation((url) => Promise.resolve({ data: url.endsWith("jd-match/history")
+    ? [{ ...match, analysisId: "analysis", result: { ...match.result, missing_skills: [] } }] : [] }));
+  render(<JDMatch onNavigate={jest.fn()} />);
+  fireEvent.click(await screen.findByRole("button", { name: /Backend.*85\/100/ }));
+  expect(screen.queryByRole("button", { name: /Add these gaps/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "🎤 Practise interview for this job" })).toBeInTheDocument();
 });

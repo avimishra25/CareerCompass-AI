@@ -84,6 +84,7 @@ The ATS model trains on 600 synthetic feature samples across three quality tiers
 - Full validated conversation history and resume ML insights retained per request
 - Server-owned system prompt; clients send only message and history
 - Discuss resume details and target roles through conversation text
+- Also knows your latest roadmap's next milestone and your last interview score (from the dashboard summary)
 
 ### 📄 PDF Report Export
 - Download full ATS analysis report as PDF (jsPDF + html2canvas)
@@ -95,8 +96,15 @@ The ATS model trains on 600 synthetic feature samples across three quality tiers
 
 ### 📊 Progress Tracker & Dashboard
 - Skills progress tracker across multiple analyses over time
-- Dashboard stats: total analyses, top matched role, average ATS score, last analysis date, JD-match count, and best JD-match score
+- Dashboard stats: total analyses, top matched role, average and latest ATS score, last analysis date, JD-match count, best JD-match score, roadmap completion with the next milestone, and interview readiness, all from one `GET /api/dashboard/summary` request
+- Quick-action cards for Career Roadmap, AI Resume Builder and Interview Prep
 - Visual progress bars and glassmorphism UI
+
+### 🔗 Connected Workflow
+- ATS report → **Build my roadmap** / **Practise interview**, with this analysis and its target (or best-matched) role pre-selected
+- JD Match result → **Add these gaps to my roadmap** (pre-selects the match, so regenerating adds the job's missing skills) and **Practise interview for this job** (the session's gaps start with the job's missing skills)
+- Resume Builder → **Analyze this resume** after export hands the exported PDF straight to Analyze
+- Cross-links only pre-select; generating a roadmap or starting a session is always your click
 
 ### 🕓 Analysis History
 - Every analysis saved to MongoDB with full mlInsights
@@ -192,6 +200,73 @@ project titles found in the resume's Projects section to Flask `/interview/quest
 `llm.py`, JSON mode) for 5 questions and validates them. Node saves an `InterviewSession`. Each answer goes to
 `/api/interview/:id/answer`; Node forwards the question, type, role and answer to Flask `/interview/evaluate`,
 recomputes the overall score from the five rubric scores, and stores the feedback on that question.
+
+---
+
+## 🧾 API Reference
+
+### Node API (`server/`, called by the browser)
+
+Every route except `/` and the OAuth routes requires `Authorization: Bearer <JWT>` and returns JSON 401
+without it. Records are scoped to the caller: another user's ID returns the same 404 as a missing one, and a
+malformed ID returns 400 (except the older `DELETE /api/history/:id`). All `/api/*` routes also share a
+300 requests / 15 min per-IP limit. "Per user" limits are per 15 minutes.
+
+| Method | Path | Body / notes | Per-user limit |
+|---|---|---|---|
+| GET | `/` | Health text (public) | – |
+| GET | `/api/auth/google`, `/api/auth/google/callback` | Google OAuth; redirects to `CLIENT_URL?token=…` (public) | – |
+| GET | `/api/auth/me` | Current user (verifies the token itself) | – |
+| POST | `/upload` | multipart `resume` (one PDF, ≤5 MiB), optional `targetRole` ≤100 | none (known gap) |
+| GET | `/api/history` | Your analyses (without resume text) | – |
+| DELETE | `/api/history/:id` | Delete one analysis | – |
+| POST | `/api/jd-match` | `{ analysisId, jd_text ≤8000, jdTitle? ≤120 }` → 201 | 20 |
+| GET | `/api/jd-match/history` | Your JD matches | – |
+| DELETE | `/api/jd-match/:id` | Delete one JD match | – |
+| POST | `/api/agent/chat` | `{ message ≤2000, history: [{ role, content }] }` → `{ reply }` | 20 |
+| POST | `/api/roadmap` | `{ analysisId, hoursPerWeek 2–40, targetRole?, jdMatchId? }` → 201 | 10 |
+| GET | `/api/roadmap` | Your latest roadmap or `null` | – |
+| GET | `/api/roadmap/:id` | One roadmap | – |
+| PATCH | `/api/roadmap/:id/milestone/:mid` | `{ status: todo\|progress\|done }` | – |
+| GET / POST | `/api/resume-builder/drafts` | List drafts / create one (201, max 20 per user, then 409) | – |
+| GET / PUT / DELETE | `/api/resume-builder/drafts/:id` | Read, replace, or delete one draft | – |
+| POST | `/api/resume-builder/enhance` | `{ section, title ≤120, notes ≤1500, tone }` → `{ bullets }` | 30 |
+| POST | `/api/resume-builder/score` | `{ text ≤50000 }` → `{ atsScore, atsBreakdown, mlInsights }` | 120 |
+| POST | `/api/resume-builder/import` | `{ analysisId }` → `{ sections, summarySource, resumeName }` | – |
+| POST | `/api/interview/start` | `{ role, type, difficulty, analysisId?, jdMatchId? }` → 201 session | 10 |
+| POST | `/api/interview/:id/answer` | `{ qid, answer ≤4000 }` → updated session (409 if already answered) | 40 |
+| GET | `/api/interview/history` | Latest 50 sessions, without questions' text, answers or feedback | – |
+| GET | `/api/interview/:id` | One session with answers and feedback | – |
+| GET | `/api/dashboard/summary` | All dashboard numbers in one response (see below) | – |
+| GET | `/api/ml/health` | Proxies Flask `/health` | – |
+
+`GET /api/dashboard/summary` returns:
+`{ analyses: { count, averageAts, latestAts, topRole, latestAnalysisId, latestAnalysisAt },
+jdMatches: { count, best }, roadmap: { id, targetRole, covered, total, done, completion, nextMilestone } | null,
+interview: { readiness, sessions, change, lastScore } | null }`.
+`completion` is the percentage of the latest roadmap's milestones marked done (100 for a covered roadmap).
+`nextMilestone` is the earliest week not yet done. `readiness` is the mean score of your latest 5 scored
+sessions, and `change` is the difference from the 5 before.
+
+### Flask ML service (`ml-service/`, called only by Node)
+
+Every route except `/health` requires `X-Internal-Key: <INTERNAL_API_KEY>`. A wrong or missing key returns
+401, and an unset key on the server returns 403. Requests are capped at 5 MiB. Routes that use Gemini return
+503 with a safe message when the quota is exhausted or the provider is unavailable, and 502 when the model's
+output fails validation after one retry.
+
+| Method | Path | Body → response | Uses Gemini |
+|---|---|---|---|
+| GET | `/health` | → `{ status, gemini, model, model_ready }` (public) | no |
+| POST | `/analyze` | multipart `resume`, `targetRole?` → skills, role matches, ATS score, `raw_text` | no |
+| POST | `/jd-match` | `{ resume_text, jd_text }` → overall match, verdict, skill lists | no |
+| POST | `/agent/gap` | `{ message, history }` → `{ reply }` | yes (text) |
+| POST | `/roadmap` | `{ target_role, missing_skills, jd_gaps, known_skills, hours_per_week, weeks?, resume_text? }` → milestones | yes (JSON) |
+| POST | `/resume/enhance` | `{ section, title, notes, tone }` → `{ bullets }` | yes (JSON) |
+| POST | `/resume/score` | `{ text }` → `{ ats_score, ats_breakdown, ml_insights }` | no |
+| POST | `/interview/questions` | `{ role, type, difficulty, resume_skills, gaps, projects, count 3–10 }` → `{ questions }` | yes (JSON) |
+| POST | `/interview/evaluate` | `{ question, type, role, answer ≤4000 }` → scores, overall, feedback | yes (JSON), skipped for answers under 15 words |
+| POST | `/retrain` | no body → retrains the ATS model | no |
 
 ---
 
@@ -441,8 +516,10 @@ supported. Speech is transcribed by the browser vendor's service, not by CareerC
 text is sent when you submit.
 
 API (all JWT-protected and owner-scoped; another user's session returns 404; malformed IDs return 400):
-- `POST /api/interview/start` `{ role, type: technical|hr|behavioural|mixed, difficulty: beginner|intermediate|advanced, analysisId? }`
-  returns the new session (201). It is limited to 10 requests/user/15 minutes.
+- `POST /api/interview/start` `{ role, type: technical|hr|behavioural|mixed, difficulty: beginner|intermediate|advanced, analysisId?, jdMatchId? }`
+  returns the new session (201). It is limited to 10 requests/user/15 minutes. With `jdMatchId` (must be your
+  own JD match, otherwise 404), that job's missing skills come first in the gaps, and the match's analysis is
+  used unless you pass `analysisId`.
 - `POST /api/interview/:id/answer` `{ qid, answer ≤4000 }` returns the updated session. An empty answer is
   allowed and scored as a short answer. It is limited to 40 requests/user/15 minutes.
 - `GET /api/interview/history` lists your latest 50 sessions (role, type, difficulty, status, overallScore, and
@@ -542,6 +619,25 @@ of `{role: "user"|"assistant", content: string}` with nonblank content, up to 20
 and 16000 for assistant replies. Both services validate and retain every supplied item; the existing JSON body-size limits still apply. Client-provided system prompts, extra fields,
 and system roles return 400. The client resends replies without truncation.
 
+## 🚀 Deployment Checklist
+
+Deploy in this order: ML service, then Node, then the client. The Career Roadmap, Resume Builder and Interview
+Prep modules add **no new environment variables** and no new Python or npm dependencies.
+
+- **Hugging Face Space (ML):** pushing `main` runs `.github/workflows/sync_to_hf.yml`, which force-pushes
+  `ml-service/` to the Space. That needs the `HF_TOKEN` repository secret in GitHub. The Space builds the
+  `Dockerfile` (Python 3.10, `python app.py`, `app_port: 8000` in `ml-service/README.md`). Set the Space
+  secrets `GEMINI_API_KEY` and `INTERNAL_API_KEY` (and optionally `GEMINI_MODEL`). spaCy and the ATS model load
+  once at start-up; `ats_model.pkl` is not committed, so each rebuild trains it on first start.
+- **Render (Node):** root directory `server`, build command `npm install`, start command `npm start`
+  (`node server.js`). Set the variables listed under "Render (Backend)" above, with `INTERNAL_API_KEY` equal to
+  the Space's and `TRUST_PROXY_HOPS=1`. LLM routes wait up to 90 s for Flask, because each validated LLM step
+  may retry once.
+- **Vercel (client):** root directory `client`, build command `npm run build`, output `build`. Set
+  `REACT_APP_API_URL` to the Render URL. Vercel builds with `CI` set, so lint warnings fail the build; the
+  build passes cleanly today. A new Vercel domain must be added to the CORS `origin` list in `server/server.js`.
+- **Google Cloud Console:** the OAuth client's authorised redirect URI must be the Render `GOOGLE_CALLBACK_URL`.
+
 ## ⚙️ Local Setup
 
 ### Prerequisites
@@ -580,7 +676,7 @@ TRUST_PROXY_HOPS=0
 ```
 
 ```bash
-node server.js
+npm start          # same as: node server.js (run from server/)
 # ✅ MongoDB connected
 # Server running on http://localhost:5000
 ```
@@ -683,6 +779,18 @@ Retrain when you change `extract_features()`, update training data tiers, or add
 <img width="1681" height="911" alt="image" src="https://github.com/user-attachments/assets/27e25876-517e-49fa-b7b0-2eadecdd4594" />
 <img width="1691" height="905" alt="image" src="https://github.com/user-attachments/assets/2262a5f2-a50c-4d21-bb03-26b3d9dae253" />
 <img width="1516" height="925" alt="image" src="https://github.com/user-attachments/assets/9a3f749c-ef26-477a-b9cc-255e75eb207f" />
+
+### Career Roadmap
+<!-- Screenshot placeholder: add the Roadmap page (milestone timeline and summary cards). -->
+_Screenshot to be added._
+
+### AI Resume Builder
+<!-- Screenshot placeholder: add the Resume Builder (editor, AI suggestion card, live ATS score, preview). -->
+_Screenshot to be added._
+
+### Interview Prep
+<!-- Screenshot placeholder: add Interview Prep (question list, answer box, feedback panel with rubric bars). -->
+_Screenshot to be added._
 
 ---
 
