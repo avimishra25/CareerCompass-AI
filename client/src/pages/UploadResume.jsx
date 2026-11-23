@@ -3,14 +3,15 @@ import axios from "axios";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import ATSReport from "../components/ATSReport";
-import CareerAgent from "../components/CareerAgent";
 import { TARGET_ROLES } from "../constants/targetRoles";
+import { useOptionalAppData } from "../context/AppDataContext";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 export default function UploadResume({ onNavigate, presetFile = null }) {
   // A PDF exported from the Resume Builder can be handed over for analysis.
   const [file,             setFile]             = useState(presetFile);
+  const appData = useOptionalAppData();
   const [analysisId,       setAnalysisId]        = useState(null);
   const [isDragging,       setDragging]          = useState(false);
   const [targetRole,       setTargetRole]        = useState("");
@@ -58,6 +59,9 @@ export default function UploadResume({ onNavigate, presetFile = null }) {
       setTargetRoleData(res.data.targetRoleAnalysis || null);
       setMlInsights(res.data.mlInsights      || null);   // ← NEW
       setAnalysisId(res.data.analysisId      || null);
+      // The Career Coach panel talks about these fresh results; the shared history picks up the new analysis.
+      appData?.setCoachAnalysis({ ...res.data, targetRole });
+      appData?.reload();
     } catch (err) {
       if (err.response?.status === 401) { localStorage.removeItem("token"); window.location.reload(); }
       setError("Upload failed. Is the NLP server running?");
@@ -437,19 +441,6 @@ export default function UploadResume({ onNavigate, presetFile = null }) {
           </div>
         )}
       </div>
-
-      {/* ── AI Career Agent — always visible after analysis ── */}
-      {hasResults && (
-        <CareerAgent
-          skills={skills}
-          atsScore={atsScore}
-          atsBreakdown={atsBreakdown}
-          bestRole={bestRole}
-          matchData={matchData}
-          targetRole={targetRole}
-          mlInsights={mlInsights}   // ← NEW: so chatbot can reference ML tips
-        />
-      )}
     </section>
   );
 }

@@ -1,119 +1,54 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { Send, X } from "lucide-react";
+import { Badge, Button, InlineAlert, cx } from "./ui";
+import { roleLabel } from "../constants/targetRoles";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
-// ─── Markdown-lite renderer ───────────────────────────────────
+
+// Escape first, then apply a little markdown (bold, italics, numbered lists, line breaks).
+// Model output is never inserted as raw HTML.
+const escapeHtml = (text) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 function renderMarkdown(text) {
   if (!text) return "";
-  return text
+  return escapeHtml(text)
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/^(\d+)\.\s/gm, "<span style='color:#3b6ef8;font-weight:600'>$1.</span> ")
+    .replace(/^(\d+)\.\s/gm, "<span class='font-medium text-brand'>$1.</span> ")
     .replace(/\n/g, "<br/>");
 }
 
-// ─── Suggestion chips ─────────────────────────────────────────
 const SUGGESTIONS = [
-  "What's my biggest skill gap?",
-  "Give me a learning roadmap",
+  "What is my biggest skill gap?",
+  "What should I learn first?",
   "How do I improve my ATS score?",
-  "What jobs suit my profile?",
-  "Which skills should I learn first?",
-  "Review my resume weaknesses",
+  "Which roles suit my profile?",
 ];
 
-// ─── Single message bubble ────────────────────────────────────
-function Message({ msg }) {
-  const isUser = msg.role === "user";
-
+function Message({ role, content }) {
+  const isUser = role === "user";
   return (
-    <div style={{
-      display: "flex",
-      justifyContent: isUser ? "flex-end" : "flex-start",
-      marginBottom: 10,
-    }}>
-      {!isUser && (
-        <div style={{
-          width: 26, height: 26, borderRadius: 8, flexShrink: 0,
-          background: "linear-gradient(135deg,#3b6ef8,#6c63ff)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: "0.65rem", fontWeight: 700, color: "#fff",
-          marginRight: 8, marginTop: 2,
-          fontFamily: "Plus Jakarta Sans, sans-serif",
-        }}>AI</div>
-      )}
-      <div style={{
-        maxWidth: "82%",
-        padding: "9px 13px",
-        borderRadius: isUser ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-        background: isUser
-          ? "linear-gradient(135deg,#3b6ef8,#6c63ff)"
-          : "rgba(255,255,255,0.65)",
-        border: isUser ? "none" : "1px solid rgba(180,190,220,0.4)",
-        backdropFilter: "blur(8px)",
-        fontSize: "0.78rem",
-        color: isUser ? "#fff" : "var(--text)",
-        fontFamily: "Plus Jakarta Sans, sans-serif",
-        lineHeight: 1.55,
-      }}
-        dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+    <div className={cx("flex", isUser ? "justify-end" : "justify-start")}>
+      <div
+        className={cx("max-w-[85%] rounded-card px-3 py-2 text-sm leading-5",
+          isUser ? "bg-brand text-white" : "border border-line bg-page text-ink")}
+        dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
       />
     </div>
   );
 }
 
-// ─── Typing indicator ─────────────────────────────────────────
-function TypingDots() {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-      <div style={{
-        width: 26, height: 26, borderRadius: 8, flexShrink: 0,
-        background: "linear-gradient(135deg,#3b6ef8,#6c63ff)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: "0.65rem", fontWeight: 700, color: "#fff",
-        fontFamily: "Plus Jakarta Sans, sans-serif",
-      }}>AI</div>
-      <div style={{
-        padding: "10px 14px", borderRadius: "16px 16px 16px 4px",
-        background: "rgba(255,255,255,0.65)", border: "1px solid rgba(180,190,220,0.4)",
-        display: "flex", gap: 4, alignItems: "center",
-      }}>
-        {[0, 0.18, 0.36].map((delay, i) => (
-          <div key={i} style={{
-            width: 6, height: 6, borderRadius: "50%",
-            background: "#3b6ef8", opacity: 0.6,
-            animation: "bounce 1s infinite",
-            animationDelay: `${delay}s`,
-          }} />
-        ))}
-      </div>
-      <style>{`
-        @keyframes bounce {
-          0%,80%,100% { transform:translateY(0); }
-          40%          { transform:translateY(-5px); }
-        }
-      `}</style>
-    </div>
-  );
-}
-
-// ─── Main Agent component ─────────────────────────────────────
-export default function CareerAgent({ skills, atsScore, atsBreakdown, bestRole, matchData, targetRole, mlInsights }) {
-  const [open,    setOpen]    = useState(false);
-  const [input,   setInput]   = useState("");
-  const [messages, setMessages] = useState([
-    {
-      role:    "assistant",
-      content: `Hey! I'm your AI career coach 👋\n\nI've analysed your resume — **${skills?.length || 0} skills detected**, ATS score **${atsScore || 0}/100**, best match **${bestRole?.role || "loading…"}**.\n\nAsk me anything about your skill gaps, what to learn next, or how to improve your resume.`,
-    },
-  ]);
+// Career coach side panel. The toggle lives in the top bar; `open` shows it, `onClose` hides it.
+// The conversation is kept while the panel is closed.
+export default function CareerAgent({ open = true, onClose, skills, atsScore, atsBreakdown, bestRole, matchData, targetRole, mlInsights }) {
+  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
+  const [error, setError] = useState("");
   // Roadmap and interview progress from the dashboard summary; null until loaded (or if it fails).
   const [progress, setProgress] = useState(null);
   const bottomRef = useRef(null);
-  const inputRef  = useRef(null);
-  const token     = localStorage.getItem("token");
+  const inputRef = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -135,270 +70,107 @@ export default function CareerAgent({ skills, atsScore, atsBreakdown, bestRole, 
     return () => { active = false; };
   }, []);
 
-  // Auto-scroll
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  useEffect(() => { bottomRef.current?.scrollIntoView?.({ block: "end" }); }, [messages, loading]);
+  useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
 
-  // Focus input when opened
-  useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 100);
-  }, [open]);
+  const hasAnalysis = Boolean(skills?.length || atsScore != null);
+  const welcome = hasAnalysis
+    ? `I can see your latest analysis: **${skills?.length || 0} skills**, ATS score **${atsScore ?? "–"}/100**, best match **${roleLabel(bestRole?.role) || "not available"}**.\nAsk about skill gaps, what to learn next or how to improve your resume.`
+    : "Ask about skill gaps, what to learn next or how to improve your resume.";
 
   const send = async (text) => {
-    const content = (text || input).trim();
+    const content = (text ?? input).trim();
     if (!content || loading) return;
     if ([...content].length > 2000) {
-      setError("Message must be at most 2000 characters.");
+      setError("Messages can be at most 2000 characters.");
       return;
     }
-
     setInput("");
     setError("");
-    const newMessages = [...messages, { role: "user", content }];
-    setMessages(newMessages);
+    const conversation = [...messages, { role: "user", content }];
+    setMessages(conversation);
     setLoading(true);
 
-    // Include resume context on every turn, including after clearing the chat.
-    // Split context into validated user messages without dropping any insights.
+    // Resume context goes with every turn (including after clearing), split into validated user messages.
     const context = [...JSON.stringify({ skills, atsScore, atsBreakdown, bestRole, matchData, targetRole, mlInsights, careerProgress: progress })];
     const history = [];
     for (let i = 0; i < context.length; i += 1800) {
       history.push({ role: "user", content: `Resume analysis context (part ${Math.floor(i / 1800) + 1}):\n${context.slice(i, i + 1800).join("")}` });
     }
-    // Exclude the welcome message and current prompt; retain every actual turn.
-    history.push(...newMessages.slice(1, -1).map((m) => ({
-      role:    m.role === "assistant" ? "assistant" : "user",
-      content: m.content,
-    })));
+    history.push(...conversation.slice(0, -1).map((message) => ({ role: message.role === "assistant" ? "assistant" : "user", content: message.content })));
 
     try {
-      const res = await axios.post(
-        `${API}/api/agent/chat`,
-        {
-          message:      content,
-          history,
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          timeout: 35000,
-        }
-      );
-
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: res.data.reply },
-      ]);
+      const res = await axios.post(`${API}/api/agent/chat`, { message: content, history },
+        { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }, timeout: 35000 });
+      setMessages((previous) => [...previous, { role: "assistant", content: res.data.reply }]);
     } catch (err) {
-      const errMsg =
-        err.response?.data?.error || err.response?.data?.reply ||
-        (err.code === "ECONNABORTED" ? "Request timed out. Try again." : "Something went wrong.");
-      setError(errMsg);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: `⚠️ ${errMsg}` },
-      ]);
+      setError(err.response?.data?.error || (err.code === "ECONNABORTED" ? "The coach took too long to reply. Try again." : "The coach is unavailable. Try again."));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleKey = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  const onKeyDown = (event) => {
+    if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); }
   };
-
-  const clearChat = () => {
-    setMessages([{
-      role:    "assistant",
-      content: `Chat cleared. I still have your resume data — **${skills?.length || 0} skills**, ATS **${atsScore || 0}/100**. What would you like to know?`,
-    }]);
-    setError("");
-  };
+  const next = progress?.roadmap?.nextMilestone;
 
   return (
-    <>
-      {/* ── Floating toggle button ── */}
-      <button
-        onClick={() => setOpen(!open)}
-        title="AI Career Coach"
-        style={{
-          position: "fixed", bottom: 24, right: 24, zIndex: 1000,
-          width: 52, height: 52, borderRadius: 16,
-          background: open ? "rgba(239,68,68,0.12)" : "linear-gradient(135deg,#3b6ef8,#6c63ff)",
-          border: open ? "1px solid rgba(239,68,68,0.25)" : "none",
-          boxShadow: open ? "none" : "0 8px 28px rgba(59,110,248,0.4)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: "pointer", transition: "all 0.25s",
-          fontSize: "1.2rem",
-        }}
-      >
-        {open
-          ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-        }
-      </button>
+    <aside
+      id="career-coach" aria-label="Career coach" hidden={!open}
+      onKeyDown={(event) => { if (event.key === "Escape" && onClose) onClose(); }}
+      className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-line bg-surface shadow-overlay md:w-[380px] xl:shadow-none"
+    >
+      <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-line px-4">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-ink">Career coach</h2>
+          <p className="truncate text-xs text-ink-muted">{hasAnalysis ? "Uses your latest analysis" : "No analysis yet"}</p>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={() => { setMessages([]); setError(""); }} disabled={!messages.length || loading}>Clear</Button>
+          {onClose && <Button variant="ghost" size="sm" icon={X} aria-label="Close career coach" onClick={onClose} />}
+        </div>
+      </div>
 
-      {/* ── Chat panel ── */}
-      {open && (
-        <div style={{
-          position: "fixed", bottom: 88, right: 24, zIndex: 999,
-          width: 360, borderRadius: 20,
-          background: "rgba(240,242,247,0.92)",
-          backdropFilter: "blur(24px) saturate(180%)",
-          border: "1px solid rgba(255,255,255,0.75)",
-          boxShadow: "0 20px 60px rgba(60,80,160,0.18)",
-          display: "flex", flexDirection: "column",
-          overflow: "hidden",
-          maxHeight: "min(560px, calc(100vh - 120px))",
-        }}>
-
-          {/* Header */}
-          <div style={{
-            padding: "14px 16px",
-            borderBottom: "1px solid rgba(180,190,220,0.35)",
-            display: "flex", alignItems: "center", gap: 10,
-            background: "rgba(255,255,255,0.5)",
-          }}>
-            <div style={{
-              width: 34, height: 34, borderRadius: 10, flexShrink: 0,
-              background: "linear-gradient(135deg,#3b6ef8,#6c63ff)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2a10 10 0 110 20A10 10 0 0112 2z"/>
-                <path d="M12 16v-4M12 8h.01"/>
-              </svg>
-            </div>
-            <div style={{ flex: 1 }}>
-              <p style={{
-                fontSize: "0.82rem", fontWeight: 700, color: "var(--text)",
-                fontFamily: "Plus Jakarta Sans, sans-serif", lineHeight: 1.2,
-              }}>AI Career Coach</p>
-              <p style={{ fontSize: "0.65rem", color: "#10b981", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                ● Online · Powered by Gemini
-              </p>
-            </div>
-            <button onClick={clearChat} title="Clear chat" style={{
-              background: "transparent", border: "none", cursor: "pointer",
-              padding: 4, borderRadius: 6, color: "var(--text-3)",
-              fontSize: "0.65rem", fontFamily: "Plus Jakarta Sans, sans-serif",
-            }}>Clear</button>
-          </div>
-
-          {/* Context pills */}
-          <div style={{
-            padding: "8px 14px",
-            borderBottom: "1px solid rgba(180,190,220,0.25)",
-            display: "flex", gap: 6, flexWrap: "wrap",
-            background: "rgba(255,255,255,0.3)",
-          }}>
-            {[
-              { label: `${skills?.length || 0} skills`, color: "#3b6ef8" },
-              { label: `ATS ${atsScore || 0}/100`,      color: atsScore >= 75 ? "#10b981" : atsScore >= 50 ? "#3b6ef8" : "#f59e0b" },
-              { label: bestRole?.role || "—",            color: "#6c63ff" },
-              progress?.roadmap?.nextMilestone && { label: `Next: ${progress.roadmap.nextMilestone.skill}`, color: "#0ea5c9" },
-              progress?.lastInterviewScore != null && { label: `Interview ${progress.lastInterviewScore.toFixed(1)}/10`, color: "#10b981" },
-            ].filter(Boolean).map((p) => (
-              <span key={p.label} style={{
-                fontSize: "0.65rem", fontWeight: 600, padding: "2px 8px",
-                borderRadius: 999, background: `${p.color}12`,
-                border: `1px solid ${p.color}25`, color: p.color,
-                fontFamily: "Plus Jakarta Sans, sans-serif",
-              }}>{p.label}</span>
-            ))}
-          </div>
-
-          {/* Messages */}
-          <div style={{
-            flex: 1, overflowY: "auto", padding: "14px 14px 4px",
-            scrollbarWidth: "thin",
-          }}>
-            {messages.map((m, i) => <Message key={i} msg={m} />)}
-            {loading && <TypingDots />}
-            <div ref={bottomRef} />
-          </div>
-
-          {/* Suggestion chips (only when no user messages yet) */}
-          {messages.length === 1 && !loading && (
-            <div style={{
-              padding: "0 12px 10px",
-              display: "flex", flexWrap: "wrap", gap: 5,
-            }}>
-              {SUGGESTIONS.map((s) => (
-                <button key={s} onClick={() => send(s)} style={{
-                  fontSize: "0.67rem", fontWeight: 500,
-                  padding: "4px 10px", borderRadius: 999,
-                  background: "rgba(59,110,248,0.07)",
-                  border: "1px solid rgba(59,110,248,0.18)",
-                  color: "#3b6ef8", cursor: "pointer",
-                  fontFamily: "Plus Jakarta Sans, sans-serif",
-                  transition: "background 0.15s",
-                }}>{s}</button>
-              ))}
-            </div>
-          )}
-
-          {error && (
-            <p role="alert" style={{ padding: "0 12px 8px", color: "#b91c1c", fontSize: "0.75rem" }}>
-              {error}
-            </p>
-          )}
-
-          {/* Input bar */}
-          <div style={{
-            padding: "10px 12px",
-            borderTop: "1px solid rgba(180,190,220,0.35)",
-            display: "flex", gap: 8, alignItems: "flex-end",
-            background: "rgba(255,255,255,0.5)",
-          }}>
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKey}
-              placeholder="Ask about your gaps, roadmap, ATS…"
-              rows={1}
-              style={{
-                flex: 1, resize: "none", border: "1px solid rgba(180,190,220,0.45)",
-                borderRadius: 12, padding: "9px 12px",
-                background: "rgba(255,255,255,0.7)",
-                fontSize: "0.78rem", color: "var(--text)",
-                fontFamily: "Plus Jakarta Sans, sans-serif",
-                outline: "none", lineHeight: 1.45,
-                maxHeight: 90, overflowY: "auto",
-              }}
-            />
-            <button
-              onClick={() => send()}
-              disabled={loading || !input.trim()}
-              style={{
-                width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-                background: loading || !input.trim()
-                  ? "rgba(180,190,220,0.3)"
-                  : "linear-gradient(135deg,#3b6ef8,#6c63ff)",
-                border: "none", cursor: loading || !input.trim() ? "not-allowed" : "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                transition: "all 0.2s",
-              }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                stroke={loading || !input.trim() ? "rgba(100,110,140,0.5)" : "#fff"}
-                strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z"/>
-              </svg>
-            </button>
-          </div>
-
-          {/* Token note */}
-          <p style={{
-            textAlign: "center", fontSize: "0.58rem", color: "var(--text-3)",
-            fontFamily: "Plus Jakarta Sans, sans-serif",
-            padding: "4px 0 8px", background: "rgba(255,255,255,0.3)",
-          }}>
-            Career guidance powered by Gemini
-          </p>
+      {hasAnalysis && (
+        <div className="flex shrink-0 flex-wrap gap-1.5 border-b border-line px-4 py-2.5">
+          <Badge>{skills?.length || 0} skills</Badge>
+          <Badge>ATS {atsScore ?? "–"}/100</Badge>
+          {bestRole?.role && <Badge>{roleLabel(bestRole.role)}</Badge>}
+          {next && <Badge tone="brand">Next: {next.skill}</Badge>}
+          {progress?.lastInterviewScore != null && <Badge tone="brand">Interview {progress.lastInterviewScore.toFixed(1)}/10</Badge>}
         </div>
       )}
-    </>
+
+      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4" aria-live="polite">
+        <Message role="assistant" content={welcome} />
+        {messages.map((message, index) => <Message key={index} {...message} />)}
+        {loading && <p className="text-sm text-ink-muted">Thinking…</p>}
+        {!messages.length && !loading && (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {SUGGESTIONS.map((suggestion) => (
+              <Button key={suggestion} size="sm" variant="secondary" onClick={() => send(suggestion)}>{suggestion}</Button>
+            ))}
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {error && <InlineAlert className="mx-4 mb-3">{error}</InlineAlert>}
+
+      <div className="shrink-0 border-t border-line p-3">
+        <div className="flex items-end gap-2">
+          <label htmlFor="coach-input" className="sr-only">Message the career coach</label>
+          <textarea
+            id="coach-input" ref={inputRef} value={input} rows={2}
+            onChange={(event) => setInput(event.target.value)} onKeyDown={onKeyDown}
+            placeholder="Ask about your skill gaps, roadmap or ATS score"
+            className="block max-h-32 min-h-[40px] w-full resize-none rounded-control border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-muted"
+          />
+          <Button variant="primary" icon={Send} aria-label="Send" onClick={() => send()} disabled={loading || !input.trim()} />
+        </div>
+        <p className="mt-2 text-xs text-ink-muted">Replies come from Gemini and can be wrong. Check important advice.</p>
+      </div>
+    </aside>
   );
 }

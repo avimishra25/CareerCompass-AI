@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import Navbar       from "./components/Navbar";
+import AppShell     from "./components/shell/AppShell";
+import { AppDataProvider } from "./context/AppDataContext";
 import Hero         from "./components/Hero";
 import UploadResume from "./pages/UploadResume";
 import Stats        from "./components/Stats";
@@ -18,7 +19,7 @@ import Profile      from "./pages/Profile";
 import OAuthSuccess from "./pages/OAuthSuccess";
 
 function AppInner() {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
 
   // Read URL params synchronously before first render so we never flash the
   // login page during the OAuth callback (token arrives as ?token=...)
@@ -140,9 +141,8 @@ function AppInner() {
   }
 
   return (
-    <div className="min-h-screen" style={{ position: "relative" }}>
-      <Navbar onNavigate={navigate} currentPage={currentPage} />
-
+    <AppDataProvider>
+    <AppShell currentPage={currentPage} onNavigate={navigate} user={user} onLogout={logout}>
       {(currentPage === "home" || currentPage === "dashboard") &&
         <Dashboard onNavigate={navigate} />
       }
@@ -177,7 +177,8 @@ function AppInner() {
       }
       {currentPage === "about"   && <About />}
       {currentPage === "profile" && <Profile />}
-    </div>
+    </AppShell>
+    </AppDataProvider>
   );
 }
 
