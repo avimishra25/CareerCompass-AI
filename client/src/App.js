@@ -2,14 +2,11 @@ import React, { useState, useRef, useEffect } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import AppShell     from "./components/shell/AppShell";
 import { AppDataProvider } from "./context/AppDataContext";
-import Hero         from "./components/Hero";
 import UploadResume from "./pages/UploadResume";
-import Stats        from "./components/Stats";
-import Features     from "./components/Features";
 import History      from "./pages/History";
 import Compare      from "./pages/Compare";
-import AuthPage     from "./pages/AuthPage";
 import About        from "./pages/About";
+import Landing      from "./pages/Landing";
 import Dashboard    from "./pages/Dashboard";
 import JDMatch      from "./pages/JDMatch";
 import Roadmap      from "./pages/Roadmap";
@@ -87,58 +84,7 @@ function AppInner() {
     );
   }
 
-  if (!user) {
-    return (
-      <div className="min-h-screen" style={{ position: "relative" }}>
-        <nav className="sticky top-0 z-50 px-6 py-3.5"
-          style={{
-            background: "rgba(240,242,247,0.8)",
-            backdropFilter: "blur(20px) saturate(180%)",
-            borderBottom: "1px solid rgba(180,190,220,0.35)",
-          }}>
-          <div className="max-w-6xl mx-auto flex justify-between items-center">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold shadow"
-                style={{ background: "linear-gradient(135deg,#3b6ef8,#6c63ff)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                C
-              </div>
-              <span className="font-bold text-base"
-                style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                CareerCompass AI
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => document.getElementById("auth-section")?.scrollIntoView({ behavior: "smooth" })}
-                className="btn-primary px-5 py-2 rounded-xl text-sm">
-                Sign In with Google
-              </button>
-            </div>
-          </div>
-        </nav>
-
-        <Hero
-          onAnalyze={() => document.getElementById("auth-section")?.scrollIntoView({ behavior: "smooth" })}
-          onHowItWorks={() => document.getElementById("landing-features")?.scrollIntoView({ behavior: "smooth" })}
-        />
-
-        <div id="auth-section">
-          <AuthPage />
-        </div>
-
-        <div id="landing-features">
-          <Stats />
-          <Features />
-        </div>
-
-        <footer className="text-center py-10" style={{ borderTop: "1px solid rgba(180,190,220,0.3)" }}>
-          <p className="text-xs" style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-            © 2026 CareerCompass AI · Built by Avi Mishra
-          </p>
-        </footer>
-      </div>
-    );
-  }
+  if (!user) return <Landing />;
 
   return (
     <AppDataProvider>
