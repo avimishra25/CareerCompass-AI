@@ -36,14 +36,14 @@ const mlInsights = {
   ],
 };
 
-export const user = { _id: "u1", name: "Riya Sharma", email: "riya.sharma@example.com" };
+export const user = { _id: "u1", name: "Rahul Verma", email: "rahul.verma@example.com" };
 const analysis = (id, name, ats, date, extra = {}) => ({
   _id: id, user: "u1", skills, match, bestRole: { role: "fullstack developer", score: 78 }, resumeName: name,
   targetRole: "fullstack developer", atsScore: ats, atsBreakdown, mlInsights, createdAt: date, updatedAt: date, ...extra,
 });
 export const history = [
-  analysis("a3", "Riya_Sharma_Resume_v3.pdf", 72, "2026-11-20T10:12:00.000Z"),
-  analysis("a2", "Riya_Sharma_Resume_v2.pdf", 64, "2026-11-02T15:40:00.000Z", { skills: skills.slice(0, 9), atsScore: 64 }),
+  analysis("a3", "Rahul_Verma_Resume_v3.pdf", 72, "2026-11-20T10:12:00.000Z"),
+  analysis("a2", "Rahul_Verma_Resume_v2.pdf", 64, "2026-11-02T15:40:00.000Z", { skills: skills.slice(0, 9), atsScore: 64 }),
   analysis("a1", "resume_final.pdf", 51, "2026-10-14T09:05:00.000Z", { skills: skills.slice(0, 6), targetRole: null }),
 ];
 export const upload = {
@@ -103,14 +103,15 @@ export const session = {
   ],
 };
 export const interviewHistory = [
-  { _id: "s3", role: "fullstack developer", type: "mixed", difficulty: "intermediate", status: "active", overallScore: 7, createdAt: "2026-11-22T09:00:00.000Z", questions: [] },
+  { _id: "s3", role: "fullstack developer", type: "mixed", difficulty: "intermediate", status: "active", overallScore: 7, createdAt: "2026-11-22T09:00:00.000Z",
+    questions: session.questions.map(({ qid, overall, answeredAt }) => ({ qid, overall, answeredAt })) },
   { _id: "s2", role: "fullstack developer", type: "technical", difficulty: "intermediate", status: "completed", overallScore: 6.8, createdAt: "2026-11-15T09:00:00.000Z", questions: [] },
   { _id: "s1", role: "fullstack developer", type: "hr", difficulty: "beginner", status: "completed", overallScore: 6.6, createdAt: "2026-11-08T09:00:00.000Z", questions: [] },
 ];
 export const draft = {
   _id: "d1", title: "Fullstack internship resume", template: "classic", atsScore: 68, updatedAt: "2026-11-21T12:00:00.000Z",
   sections: {
-    contact: { name: "Riya Sharma", email: "riya.sharma@example.com", phone: "+91 98765 43210", links: ["github.com/riyasharma", "linkedin.com/in/riyasharma"] },
+    contact: { name: "Rahul Verma", email: "rahul.verma@example.com", phone: "+91 98765 43210", links: ["github.com/rahulverma", "linkedin.com/in/rahulverma"] },
     summary: "Computer science student building full-stack web apps with React, Node and MongoDB. Looking for a summer 2027 software engineering internship.",
     skills: [{ group: "Languages", items: ["JavaScript", "Python", "SQL"] }, { group: "Frontend", items: ["React", "Tailwind CSS", "HTML", "CSS"] },
       { group: "Backend", items: ["Node.js", "Express", "Flask", "REST APIs"] }, { group: "Databases", items: ["MongoDB", "PostgreSQL"] }],

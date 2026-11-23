@@ -1,258 +1,213 @@
-import React, { useEffect, useState } from "react";
-import { useAuth } from "../context/AuthContext";
+import React, { useCallback, useEffect, useId, useState } from "react";
 import axios from "axios";
+import { ArrowRight, FilePen, FileSearch, Gauge, Map, MessagesSquare, Target, TrendingDown, TrendingUp } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import { useAppData } from "../context/AppDataContext";
 import ProgressTracker from "../components/ProgressTracker";
+import { Badge, Button, Card, EmptyState, Icon, InlineAlert, PageHeader, ProgressBar, Skeleton } from "../components/ui";
+import { roleLabel } from "../constants/targetRoles";
+
+import { formatSkill, shortDate } from "../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
-const font = "Plus Jakarta Sans, sans-serif";
-const statLabel = { color: "var(--text-3)", fontFamily: font };
+const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
 
-function StatCard({ value, label, detail, onClick, children, small = false }) {
+function greeting(date = new Date()) {
+  const hour = date.getHours();
+  return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+}
+
+// A signed change as a badge: green up, red down, neutral when unchanged.
+function Change({ value, suffix, decimals = 0 }) {
+  if (value == null) return null;
+  const rounded = Number(value.toFixed(decimals));
+  if (rounded === 0) return <Badge>No change {suffix}</Badge>;
+  const up = rounded > 0;
   return (
-    <button type="button" onClick={onClick} className="glass rounded-2xl p-5 text-center w-full">
-      <p className={`${small ? "text-lg capitalize" : "text-3xl"} font-extrabold gradient-text`} style={{ fontFamily: font }}>{value}</p>
-      <p className="text-xs mt-1" style={statLabel}>{label}</p>
-      {children}
-      {detail && <p className="text-xs mt-1.5" style={{ color: "var(--text-2)", fontFamily: font }}>{detail}</p>}
-    </button>
+    <Badge tone={up ? "success" : "danger"} icon={up ? TrendingUp : TrendingDown}>
+      <span className="tabular">{up ? "+" : "−"}{Math.abs(rounded).toFixed(decimals)}</span> {suffix}
+    </Badge>
+  );
+}
+
+function Kpi({ icon, label, value, unit, onClick, footer, loading }) {
+  const footerId = useId();
+  return (
+    <Card as="button" type="button" onClick={onClick} padding="sm"
+      aria-label={loading ? `${label}, loading` : `${label} ${value != null ? `${value}${unit || ""}` : "not available"}`}
+      aria-describedby={footer && !loading ? footerId : undefined}
+      className="flex w-full flex-col text-left transition-ui hover:border-line-strong">
+      <span className="flex items-center gap-2 text-sm font-medium text-ink-secondary">
+        <Icon icon={icon} className="text-ink-muted" /> {label}
+      </span>
+      {loading ? <Skeleton className="mt-3 h-8 w-24" /> : (
+        <span className="mt-2 flex items-baseline gap-1">
+          <span className="tabular text-xl font-semibold text-ink">{value ?? "–"}</span>
+          {value != null && unit && <span className="tabular text-sm text-ink-muted">{unit}</span>}
+        </span>
+      )}
+      <span id={footerId} className="mt-2 min-h-6 text-sm text-ink-muted">{!loading && footer}</span>
+    </Card>
+  );
+}
+
+function ContinueRow({ icon, title, meta, status, action, onClick }) {
+  return (
+    // On phones the button wraps under the text (aligned with it) instead of squeezing it.
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 first:pt-0 last:pb-0">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-hover text-ink-secondary">
+        <Icon icon={icon} />
+      </span>
+      <span className="min-w-0 flex-1 basis-[calc(100%-3rem)] sm:basis-0">
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="truncate text-sm font-medium text-ink">{title}</span>
+          {status}
+        </span>
+        <span className="mt-0.5 line-clamp-2 text-sm text-ink-muted">{meta}</span>
+      </span>
+      <Button size="sm" onClick={onClick} aria-label={`${action}: ${title}`} className="ml-12 sm:ml-0">{action}</Button>
+    </li>
   );
 }
 
 export default function Dashboard({ onNavigate }) {
   const { user } = useAuth();
+  const { history } = useAppData();
   const [summary, setSummary] = useState(null);
+  const [session, setSession] = useState(null);
+  const [draft, setDraft] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState("");
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    let active = true;
-    axios.get(`${API}/api/dashboard/summary`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-    })
-      .then(({ data }) => { if (active) setSummary(data); })
-      .catch(() => { if (active) setError("Could not load your dashboard stats."); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+  const load = useCallback(() => {
+    setLoading(true);
+    setError("");
+    // Optional extras (unfinished interview, latest draft) never block the summary.
+    return Promise.allSettled([
+      axios.get(`${API}/api/dashboard/summary`, auth()),
+      axios.get(`${API}/api/interview/history`, auth()),
+      axios.get(`${API}/api/resume-builder/drafts`, auth()),
+    ]).then(([summaryResult, sessionsResult, draftsResult]) => {
+      if (summaryResult.status === "fulfilled") setSummary(summaryResult.value.data);
+      else setError("Could not load your dashboard.");
+      const sessions = sessionsResult.status === "fulfilled" && Array.isArray(sessionsResult.value?.data) ? sessionsResult.value.data : [];
+      setSession(sessions.find((item) => item.status === "active") || null);
+      const drafts = draftsResult.status === "fulfilled" && Array.isArray(draftsResult.value?.data) ? draftsResult.value.data : [];
+      setDraft(drafts[0] || null);
+    }).finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => { load(); }, [load]);
+
   const firstName = user?.name?.split(" ")[0] || "there";
-  const show = (value, format = (v) => v) => (loading ? "—" : value == null ? "—" : format(value));
   const analyses = summary?.analyses;
   const roadmap = summary?.roadmap;
   const interview = summary?.interview;
   const next = roadmap?.nextMilestone;
+  // ATS change since the previous analysis that has a score (history is newest first).
+  const scored = (history || []).map((item) => item.atsScore).filter(Number.isFinite);
+  const atsChange = scored.length >= 2 ? scored[0] - scored[1] : null;
+  const answered = session?.questions?.filter((item) => item.answeredAt).length ?? 0;
 
-  const featureCards = [
-    { emoji: "🧠", title: "NLP Skill Extraction",   desc: "spaCy + TF-IDF ranks your skills by relevance from your resume text." },
-    { emoji: "🎯", title: "Target Role Analysis",   desc: "Set your goal role and see exactly how far you are from your dream job." },
-    { emoji: "⚠️", title: "Skill Gap Analysis",      desc: "See exactly which skills you're missing for each career path." },
-    { emoji: "📊", title: "ATS Score",               desc: "Get an ATS readiness score with a detailed breakdown and tips to improve." },
-    { emoji: "🗺️", title: "Career Roadmap",          desc: "A week-by-week plan for your skill gaps, prerequisites first, with free resources." },
-    { emoji: "📝", title: "AI Resume Builder",       desc: "Turn rough notes into action-verb bullets, watch your ATS score live, export an A4 PDF." },
-    { emoji: "🎤", title: "Interview Prep",          desc: "Practise questions on your gaps and projects and get rubric-based AI feedback." },
-    { emoji: "🕓", title: "Analysis History",        desc: "Every analysis is saved so you can track your growth over time." },
-    { emoji: "🔐", title: "Secure & Private",        desc: "Your data is protected with JWT auth and stored under your account only." },
-  ];
+  const primary = !analyses?.count
+    ? { label: "Analyze resume", icon: FileSearch, page: "analyze" }
+    : next ? { label: "Continue roadmap", icon: Map, page: "roadmap" }
+      : session ? { label: "Resume interview", icon: MessagesSquare, page: "interview" }
+        : { label: "Practise interview", icon: MessagesSquare, page: "interview" };
 
-  const actions = [
-    {
-      page: "roadmap", emoji: "🗺️", title: "Career Roadmap",
-      desc: next ? `Next: week ${next.week} · ${next.skill}` : roadmap ? "All milestones complete — regenerate for a new role." : "Turn your skill gaps into a week-by-week plan.",
+  const header = (
+    <PageHeader
+      title={`${greeting()}, ${firstName}`}
+      description="Where your resume stands and what to work on next."
+      actions={!loading && !error && <Button variant="primary" icon={primary.icon} onClick={() => onNavigate(primary.page)}>{primary.label}</Button>}
+    />
+  );
+
+  if (error) {
+    return (
+      <>
+        {header}
+        <InlineAlert title={error} action={<Button size="sm" onClick={load}>Try again</Button>}>
+          Check your connection, then try again.
+        </InlineAlert>
+      </>
+    );
+  }
+
+  if (!loading && !analyses?.count) {
+    return (
+      <>
+        {header}
+        <Card>
+          <EmptyState
+            icon={FileSearch}
+            title="Analyze your first resume"
+            description="Upload a PDF to get your ATS score, skill gaps and role matches. Everything else builds on it."
+            action={<Button variant="primary" onClick={() => onNavigate("analyze")}>Analyze resume</Button>}
+          />
+        </Card>
+      </>
+    );
+  }
+
+  const continueRows = [
+    next && {
+      key: "roadmap", icon: Map, title: `Week ${next.week} · ${formatSkill(next.skill)}`, meta: next.objective,
+      status: next.status === "progress" ? <Badge tone="brand">In progress</Badge> : <Badge>Up next</Badge>,
+      action: "Open roadmap", page: "roadmap",
     },
-    { page: "resume-builder", emoji: "📝", title: "AI Resume Builder", desc: "Write rough notes and let AI turn them into ATS-friendly bullets." },
-    {
-      page: "interview", emoji: "🎤", title: "Interview Prep",
-      desc: interview ? `Last session ${interview.lastScore.toFixed(1)}/10 — keep practising.` : "Practise questions on your gaps and projects.",
+    session && {
+      key: "interview", icon: MessagesSquare, title: `Interview session · ${roleLabel(session.role)}`,
+      meta: `${answered} of ${session.questions?.length || 5} questions answered · started ${shortDate(session.createdAt)}`,
+      status: <Badge tone="warning">Unfinished</Badge>, action: "Resume session", page: "interview",
     },
-  ];
-
-  const sampleSkills = ["react", "python", "node", "mongodb", "express", "git", "javascript", "flask"];
-  const sampleRoles  = [
-    { emoji: "💻", role: "Fullstack Developer", score: 84 },
-    { emoji: "⚙️", role: "Backend Developer",  score: 72 },
-    { emoji: "📊", role: "Data Scientist",      score: 45 },
-  ];
+    draft && {
+      key: "draft", icon: FilePen, title: draft.title,
+      meta: `Edited ${shortDate(draft.updatedAt)}${draft.atsScore != null ? ` · ATS ${draft.atsScore}` : ""}`,
+      action: "Open draft", page: "resume-builder",
+    },
+  ].filter(Boolean);
 
   return (
-    <div className="px-6 py-10 max-w-6xl mx-auto space-y-10">
+    <>
+      {header}
 
-      {/* ── Welcome Header ── */}
-      <div className="glass rounded-3xl p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest mb-2"
-            style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-            Welcome back
-          </p>
-          <h1 className="text-3xl font-extrabold mb-2"
-            style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-            Hey, {firstName} 👋
-          </h1>
-          <p className="text-sm" style={{ color: "var(--text-2)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-            Ready to discover your best career path? Upload your resume and get instant AI-powered insights.
-          </p>
-        </div>
-        <button
-          onClick={() => onNavigate("analyze")}
-          className="btn-primary px-8 py-3.5 rounded-xl text-sm whitespace-nowrap">
-          Analyze My Resume →
-        </button>
-      </div>
-
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-
-      {/* ── Stats (one GET /api/dashboard/summary request) ── */}
-      <section aria-label="Your stats" className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard value={show(analyses?.count)} label="Analyses Done" onClick={() => onNavigate("history")} />
-        <StatCard small value={loading ? "—" : analyses?.topRole || "None yet"} label="Top Matched Role" onClick={() => onNavigate("history")} />
-        <StatCard value={show(analyses?.averageAts)} label="Avg ATS Score" onClick={() => onNavigate("history")}
-          detail={analyses?.latestAts != null ? `Latest: ${analyses.latestAts}` : null} />
-        <StatCard small label="Last Analysis" onClick={() => onNavigate("analyze")}
-          value={loading ? "—" : analyses?.latestAnalysisAt
-            ? new Date(analyses.latestAnalysisAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })
-            : "Never"} />
-        <StatCard value={show(summary?.jdMatches.count)} label="JD Matches" onClick={() => onNavigate("jd-match")} />
-        <StatCard value={show(summary?.jdMatches.best, (best) => `${best}/100`)} label="Best JD Match" onClick={() => onNavigate("jd-match")} />
-        <StatCard value={show(roadmap?.completion, (value) => `${value}%`)} label="Roadmap Completion" onClick={() => onNavigate("roadmap")}
-          detail={loading ? null : next ? `Next: week ${next.week} · ${next.skill}` : roadmap ? "All milestones done" : "No roadmap yet"}>
-          {roadmap && (
-            <div className="progress-track mt-2" role="progressbar" aria-label="Roadmap completion"
-              aria-valuemin={0} aria-valuemax={100} aria-valuenow={roadmap.completion}>
-              <div className="progress-fill" style={{ width: `${roadmap.completion}%`, background: "linear-gradient(90deg,#10b981,#0ea5c9)" }} />
-            </div>
-          )}
-        </StatCard>
-        <StatCard value={show(interview?.readiness, (value) => `${value.toFixed(1)}/10`)} label="Interview Readiness" onClick={() => onNavigate("interview")}
-          detail={loading ? null : !interview ? "No sessions yet"
-            : interview.change != null ? `${interview.change >= 0 ? "▲" : "▼"} ${Math.abs(interview.change).toFixed(1)} vs previous 5`
+      <section aria-label="Key metrics" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Kpi icon={Gauge} label="ATS score" value={analyses?.latestAts} unit="/100" loading={loading} onClick={() => onNavigate("history")}
+          footer={atsChange != null ? <Change value={atsChange} suffix="since last analysis" /> : analyses?.count === 1 ? "Your first analysis" : null} />
+        <Kpi icon={Map} label="Roadmap progress" value={roadmap ? `${roadmap.completion}%` : null} loading={loading} onClick={() => onNavigate("roadmap")}
+          footer={roadmap
+            ? <span className="flex items-center gap-3"><ProgressBar value={roadmap.completion} label="Roadmap progress" className="max-w-24" /><span className="tabular">{roadmap.done} of {roadmap.total} weeks</span></span>
+            : "No roadmap yet"} />
+        <Kpi icon={MessagesSquare} label="Interview readiness" value={interview ? interview.readiness.toFixed(1) : null} unit="/10" loading={loading}
+          onClick={() => onNavigate("interview")}
+          footer={!interview ? "No sessions yet"
+            : interview.change != null ? <Change value={interview.change} decimals={1} suffix="vs previous 5" />
               : `Average of ${interview.sessions} session${interview.sessions === 1 ? "" : "s"}`} />
+        <Kpi icon={Target} label="Best JD match" value={summary?.jdMatches.best} unit="/100" loading={loading} onClick={() => onNavigate("jd-match")}
+          footer={summary?.jdMatches.count ? `Across ${summary.jdMatches.count} job description${summary.jdMatches.count === 1 ? "" : "s"}` : "No matches yet"} />
       </section>
 
-      {/* ── Quick actions for the career tools ── */}
-      <section aria-label="Quick actions" className="grid md:grid-cols-3 gap-4">
-        {actions.map(({ page, emoji, title, desc }) => (
-          <button key={page} type="button" onClick={() => onNavigate(page)}
-            className="glass rounded-2xl p-5 text-left hover:scale-[1.02] transition-transform duration-200">
-            <div className="text-2xl mb-2" aria-hidden="true">{emoji}</div>
-            <h2 className="font-bold text-sm" style={{ color: "var(--text)", fontFamily: font }}>{title} →</h2>
-            <p className="text-xs mt-1 leading-relaxed" style={{ color: "var(--text-2)", fontFamily: font }}>{desc}</p>
-          </button>
-        ))}
-      </section>
-
-      {/* ── Progress Tracker (only renders if 2+ analyses exist) ── */}
-      {!loading && analyses?.count >= 2 && (
-        <ProgressTracker />
-      )}
-
-      {/* ── Preview Section ── */}
-      <div className="glass rounded-3xl p-8">
-        <p className="text-xs font-semibold uppercase tracking-widest mb-1"
-          style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-          Sample Result Preview
-        </p>
-        <h2 className="text-xl font-bold mb-6"
-          style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-          Here's what your analysis will look like
-        </h2>
-
-        <div className="grid md:grid-cols-2 gap-6">
-          <div style={{ background: "rgba(255,255,255,0.5)", borderRadius: "16px", padding: "20px" }}>
-            <p className="text-sm font-bold mb-3 flex items-center gap-2"
-              style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-              🧠 Extracted Skills
-              <span className="ml-auto text-xs font-normal" style={{ color: "var(--text-3)" }}>
-                {sampleSkills.length} found
-              </span>
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {sampleSkills.map((s, i) => (
-                <span key={i} className="skill-pill">{s}</span>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ background: "rgba(255,255,255,0.5)", borderRadius: "16px", padding: "20px" }}>
-            <p className="text-sm font-bold mb-4"
-              style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-              🎯 Career Match
-            </p>
-            <div className="space-y-4">
-              {sampleRoles.map(({ emoji, role, score }) => (
-                <div key={role}>
-                  <div className="flex justify-between mb-1.5">
-                    <span className="text-sm font-medium capitalize"
-                      style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                      {emoji} {role}
-                    </span>
-                    <span className="text-sm font-bold" style={{ color: "#3b6ef8" }}>{score}%</span>
-                  </div>
-                  <div className="progress-track">
-                    <div className="progress-fill"
-                      style={{ width: `${score}%`, background: "linear-gradient(90deg,#3b6ef8,#6c63ff)" }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <button
-          onClick={() => onNavigate("analyze")}
-          className="btn-primary w-full mt-6 py-3.5 rounded-xl text-sm">
-          Get Your Real Analysis →
-        </button>
-      </div>
-
-      {/* ── Feature Cards ── */}
-      <div>
-        <h2 className="text-xl font-bold mb-6"
-          style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-          What CareerCompass AI does for you
-        </h2>
-        <div className="grid md:grid-cols-3 gap-4">
-          {featureCards.map(({ emoji, title, desc }) => (
-            <div key={title} className="glass rounded-2xl p-5">
-              <div className="text-2xl mb-3">{emoji}</div>
-              <h3 className="font-bold text-sm mb-2"
-                style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                {title}
-              </h3>
-              <p className="text-xs leading-relaxed"
-                style={{ color: "var(--text-2)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                {desc}
-              </p>
-            </div>
-          ))}
+      <div className="mt-6 grid items-start gap-6 xl:grid-cols-2">
+        <Card as="section" title="Continue where you left off" className="min-w-0">
+          {loading ? <Skeleton lines={3} className="h-10" label="Loading your recent work" /> : continueRows.length ? (
+            <ul className="divide-y divide-line">
+              {continueRows.map(({ key, page, ...row }) => <ContinueRow key={key} {...row} onClick={() => onNavigate(page)} />)}
+            </ul>
+          ) : (
+            <EmptyState icon={Map} className="py-6" title="Nothing in progress"
+              description="Generate a roadmap or start an interview session and it will show up here."
+              action={<Button iconRight={ArrowRight} onClick={() => onNavigate("roadmap")}>Generate roadmap</Button>} />
+          )}
+        </Card>
+        <div className="min-w-0">
+          {(analyses?.count ?? 0) >= 2 ? <ProgressTracker /> : (
+            <Card title="Progress over time">
+              <p className="text-sm text-ink-muted">Analyze an updated resume to see how your score changes over time.</p>
+            </Card>
+          )}
         </div>
       </div>
-
-      {/* ── Quick Links ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: "Analyze Resume", emoji: "📄", page: "analyze"  },
-          { label: "View History",   emoji: "🕓", page: "history"  },
-          { label: "Compare",        emoji: "🔀", page: "history"  },
-          { label: "About Project",  emoji: "ℹ️",  page: "about"    },
-        ].map(({ label, emoji, page }) => (
-          <button key={label}
-            onClick={() => onNavigate(page)}
-            className="glass rounded-2xl p-5 text-center hover:scale-105 transition-transform duration-200">
-            <div className="text-2xl mb-2">{emoji}</div>
-            <p className="text-xs font-semibold"
-              style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-              {label}
-            </p>
-          </button>
-        ))}
-      </div>
-
-      {/* Footer */}
-      <footer className="text-center py-6" style={{ borderTop: "1px solid rgba(180,190,220,0.3)" }}>
-        <p className="text-xs" style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-          © 2026 CareerCompass AI · Built by Avi Mishra
-        </p>
-      </footer>
-
-    </div>
+    </>
   );
 }
