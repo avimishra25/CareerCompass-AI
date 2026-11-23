@@ -1,378 +1,149 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
+import { ArrowDown, ArrowLeft, ArrowUp, GitCompare, Minus } from "lucide-react";
+import { Badge, Button, Card, EmptyState, Icon, PageHeader } from "../components/ui";
+import { roleIcon, roleLabel } from "../constants/targetRoles";
+import { formatSkill, longDate } from "../utils/format";
 
-// ── Helpers ──────────────────────────────────────────────────
-function scoreBadgeStyle(score) {
-  if (score >= 75) return { color: "#10b981", bg: "rgba(16,185,129,0.1)",  border: "rgba(16,185,129,0.25)"  };
-  if (score >= 50) return { color: "#3b6ef8",  bg: "rgba(59,110,248,0.1)",  border: "rgba(59,110,248,0.25)"  };
-  if (score >= 30) return { color: "#f59e0b",  bg: "rgba(245,158,11,0.1)",  border: "rgba(245,158,11,0.25)"  };
-  return               { color: "#ef4444",  bg: "rgba(239,68,68,0.1)",   border: "rgba(239,68,68,0.25)"   };
-}
+const score = (value) => {
+  const number = parseInt(value, 10);
+  return Number.isFinite(number) ? number : null;
+};
 
-function DeltaBadge({ delta }) {
-  if (delta === 0) return (
-    <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-      no change
-    </span>
-  );
-  const positive = delta > 0;
+// Higher is better for every compared metric.
+function Delta({ before, after, unit = "" }) {
+  if (before == null || after == null) return <span className="text-ink-muted">–</span>;
+  const change = after - before;
+  if (change === 0) {
+    return <span className="inline-flex items-center gap-1 text-ink-muted"><Icon icon={Minus} />No change</span>;
+  }
+  const up = change > 0;
   return (
-    <span style={{
-      fontSize: "0.72rem", fontWeight: 700,
-      color:      positive ? "#10b981" : "#ef4444",
-      background: positive ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)",
-      border:     `1px solid ${positive ? "rgba(16,185,129,0.25)" : "rgba(239,68,68,0.25)"}`,
-      borderRadius: 999, padding: "2px 8px",
-      fontFamily: "Plus Jakarta Sans, sans-serif",
-    }}>
-      {positive ? "▲" : "▼"} {Math.abs(delta)}
+    <span className={`inline-flex items-center gap-1 font-medium ${up ? "text-success" : "text-danger"}`}>
+      <Icon icon={up ? ArrowUp : ArrowDown} />
+      <span className="tabular">{up ? "+" : "−"}{Math.abs(change)}{unit}</span>
+      <span className="sr-only">{up ? "increase" : "decrease"}</span>
     </span>
   );
 }
 
-//function MiniBar({ score, highlight }) {
-//  return (
-//    <div style={{ background: "rgba(180,190,220,0.15)", borderRadius: 999, height: 5, overflow: "hidden", marginTop: 4 }}>
-//      <div style={{
-//        height: "100%", borderRadius: 999,
-//        width: `${score}%`,
-//        background: highlight
-//          ? "linear-gradient(90deg,#3b6ef8,#6c63ff)"
-//          : "rgba(180,190,220,0.4)",
-//        transition: "width 0.8s cubic-bezier(.4,0,.2,1)",
-//      }} />
-//  </div>
-//);
-//}
-
-function StatCard({ label, valueA, valueB, delta, unit = "" }) {
-  const styleB = scoreBadgeStyle(typeof valueB === "number" ? valueB : 0);
+function Row({ label, icon, before, after, unit, format = (value) => value }) {
   return (
-    <div style={{
-      background: "rgba(255,255,255,0.45)",
-      border: "1px solid rgba(180,190,220,0.3)",
-      borderRadius: 14, padding: "14px 16px",
-    }}>
-      <p style={{ fontSize: "0.68rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em",
-        color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif", marginBottom: 8 }}>
-        {label}
-      </p>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <span style={{ fontSize: "0.85rem", color: "var(--text-2)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-          {valueA}{unit}
-        </span>
-        <span style={{ color: "var(--text-3)", fontSize: "0.75rem" }}>→</span>
-        <span style={{
-          fontSize: "0.95rem", fontWeight: 700,
-          color: styleB.color, fontFamily: "Plus Jakarta Sans, sans-serif",
-        }}>
-          {valueB}{unit}
-        </span>
-        <DeltaBadge delta={delta} />
-      </div>
+    <tr className="border-b border-line last:border-0">
+      <th scope="row" className="px-4 py-3 text-left font-medium text-ink">
+        <span className="flex items-center gap-2">{icon && <Icon icon={icon} className="shrink-0 text-ink-muted" />}{label}</span>
+      </th>
+      <td className="tabular px-4 py-3 text-ink-secondary">{before == null ? "–" : `${format(before)}${unit || ""}`}</td>
+      <td className="bg-page px-4 py-3"><Delta before={before} after={after} unit={unit} /></td>
+      <td className="tabular px-4 py-3 font-medium text-ink">{after == null ? "–" : `${format(after)}${unit || ""}`}</td>
+    </tr>
+  );
+}
+
+function SkillList({ title, skills, tone }) {
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-ink">{title} <span className="tabular font-normal text-ink-muted">{skills.length}</span></h3>
+      {skills.length ? (
+        <ul aria-label={title} className="mt-2 flex flex-wrap gap-1.5">
+          {skills.map((skill) => <li key={skill}><Badge tone={tone}>{formatSkill(skill)}</Badge></li>)}
+        </ul>
+      ) : <p className="mt-2 text-sm text-ink-muted">None</p>}
     </div>
   );
 }
 
-// ── Main Component ────────────────────────────────────────────
 export default function Compare({ analysisA, analysisB, onNavigate }) {
-  // ── All hooks MUST come before any early returns ──
-  const sharedRoles = useMemo(() => {
-    if (!analysisA || !analysisB) return [];
-    const matchA = analysisA.match || {};
-    const matchB = analysisB.match || {};
-    const allRoles = [...new Set([...Object.keys(matchA), ...Object.keys(matchB)])];
-    return allRoles
-      .map(r => ({
-        role:   r,
-        scoreA: parseInt(matchA[r]?.score || 0),
-        scoreB: parseInt(matchB[r]?.score || 0),
-        emoji:  matchA[r]?.emoji || matchB[r]?.emoji || "💼",
-      }))
-      .sort((a, b) => Math.max(b.scoreA, b.scoreB) - Math.max(a.scoreA, a.scoreB))
-      .slice(0, 6);
+  const [showAllRoles, setShowAllRoles] = useState(false);
+  // Always older → newer, whatever order the two were picked in.
+  const [older, newer] = useMemo(() => {
+    if (!analysisA || !analysisB) return [null, null];
+    return [analysisA, analysisB].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   }, [analysisA, analysisB]);
 
-  // Guard — early return AFTER all hooks
-  if (!analysisA || !analysisB) {
+  const roles = useMemo(() => {
+    if (!older || !newer) return [];
+    const names = [...new Set([...Object.keys(older.match || {}), ...Object.keys(newer.match || {})])];
+    return names
+      .map((role) => ({ role, before: score(older.match?.[role]?.score), after: score(newer.match?.[role]?.score) }))
+      .sort((a, b) => Math.max(b.before ?? 0, b.after ?? 0) - Math.max(a.before ?? 0, a.after ?? 0));
+  }, [older, newer]);
+
+  if (!older || !newer) {
     return (
-      <div className="min-h-screen px-6 py-12 flex items-center justify-center">
-        <div className="glass rounded-3xl p-12 text-center">
-          <div className="text-4xl mb-4">🔀</div>
-          <p style={{ color: "var(--text-2)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-            No analyses selected for comparison.
-          </p>
-          <button onClick={() => onNavigate("history")}
-            className="btn-primary mt-6 px-6 py-2.5 rounded-xl text-sm">
-            Go to History
-          </button>
-        </div>
-      </div>
+      <>
+        <PageHeader title="Compare analyses" />
+        <Card>
+          <EmptyState icon={GitCompare} title="Pick two analyses to compare" description="Select two rows in History, then choose Compare selected."
+            action={<Button variant="primary" onClick={() => onNavigate("history")}>Go to history</Button>} />
+        </Card>
+      </>
     );
   }
 
-  const skillsA = new Set(analysisA.skills || []);
-  const skillsB = new Set(analysisB.skills || []);
-
-  const gained  = [...skillsB].filter(s => !skillsA.has(s));
-  const lost    = [...skillsA].filter(s => !skillsB.has(s));
-  const common  = [...skillsA].filter(s =>  skillsB.has(s));
-
-  const atsA = analysisA.atsScore ?? null;
-  const atsB = analysisB.atsScore ?? null;
-  const atsDelta = (atsA != null && atsB != null) ? atsB - atsA : null;
-
-  const skillDelta = skillsB.size - skillsA.size;
-
-  const roleA     = analysisA.bestRole?.role  || "—";
-  const roleB     = analysisB.bestRole?.role  || "—";
-  const scoreA    = analysisA.bestRole?.score ?? 0;
-  const scoreB    = analysisB.bestRole?.score ?? 0;
-  const roleDelta = scoreB - scoreA;
-
-  const dateA = new Date(analysisA.createdAt).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
-  const dateB = new Date(analysisB.createdAt).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+  const skillsBefore = new Set(older.skills || []);
+  const skillsAfter = new Set(newer.skills || []);
+  const gained = [...skillsAfter].filter((skill) => !skillsBefore.has(skill));
+  const kept = [...skillsAfter].filter((skill) => skillsBefore.has(skill));
+  const removed = [...skillsBefore].filter((skill) => !skillsAfter.has(skill));
+  const visibleRoles = showAllRoles ? roles : roles.slice(0, 6);
+  const column = (analysis, label) => (
+    <th scope="col" className="px-4 py-3 text-left align-bottom">
+      <span className="block text-xs font-medium uppercase tracking-[0.02em] text-ink-muted">{label}</span>
+      <span className="mt-1 block max-w-[220px] truncate text-sm font-medium normal-case tracking-normal text-ink" title={analysis.resumeName}>{analysis.resumeName}</span>
+      <span className="block text-sm font-normal normal-case tracking-normal text-ink-muted">{longDate(analysis.createdAt)}</span>
+    </th>
+  );
 
   return (
-    <div className="min-h-screen px-6 py-12">
-      <div className="max-w-5xl mx-auto space-y-6">
-
-        {/* ── Header ── */}
-        <div className="flex items-center justify-between flex-wrap gap-4 mb-2">
-          <div>
-            <button onClick={() => onNavigate("history")}
-              className="flex items-center gap-1.5 text-xs mb-3 transition"
-              style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-              ← Back to History
-            </button>
-            <h1 className="text-3xl font-bold"
-              style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-              Resume{" "}
-              <span style={{ fontFamily: "'Instrument Serif',serif", fontStyle: "italic" }}
-                className="gradient-text">Comparison</span>
-            </h1>
-            <p className="text-sm mt-1" style={{ color: "var(--text-2)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-              {dateA} vs {dateB}
-            </p>
-          </div>
-        </div>
-
-        {/* ── Summary stat cards ── */}
-        <div className="grid sm:grid-cols-3 gap-4">
-          {atsA != null && atsB != null && (
-            <StatCard
-              label="ATS Score"
-              valueA={atsA} valueB={atsB}
-              delta={atsDelta}
-              unit=""
-            />
-          )}
-          <StatCard
-            label="Skills Count"
-            valueA={skillsA.size} valueB={skillsB.size}
-            delta={skillDelta}
-          />
-          <StatCard
-            label="Best Role Match"
-            valueA={`${scoreA}%`} valueB={`${scoreB}%`}
-            delta={roleDelta}
-          />
-        </div>
-
-        {/* ── Role headers side by side ── */}
-        <div className="grid md:grid-cols-2 gap-4">
-          {[
-            { label: "Resume A", date: dateA, role: roleA, score: scoreA, name: analysisA.resumeName },
-            { label: "Resume B", date: dateB, role: roleB, score: scoreB, name: analysisB.resumeName },
-          ].map(({ label, date, role, score, name }, idx) => {
-            const s = scoreBadgeStyle(score);
-            return (
-              <div key={idx} className="glass rounded-2xl p-5"
-                style={{ border: idx === 1 ? "1.5px solid rgba(59,110,248,0.3)" : undefined }}>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold uppercase tracking-widest"
-                    style={{ color: idx === 1 ? "#3b6ef8" : "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                    {label} {idx === 1 && "✨"}
-                  </span>
-                  <span className="text-xs" style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                    {date}
-                  </span>
-                </div>
-                <p className="text-xs mb-1" style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                  {name}
-                </p>
-                <p className="font-bold capitalize text-base"
-                  style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                  {role}
-                </p>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-                  <span style={{
-                    fontSize: "1.5rem", fontWeight: 800, color: s.color,
-                    fontFamily: "Plus Jakarta Sans, sans-serif",
-                  }}>{score}%</span>
-                  <span style={{
-                    fontSize: "0.7rem", padding: "2px 8px", borderRadius: 999,
-                    background: s.bg, border: `1px solid ${s.border}`, color: s.color,
-                    fontFamily: "Plus Jakarta Sans, sans-serif",
-                  }}>match</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* ── Skills diff ── */}
-        <div className="glass rounded-3xl p-6">
-          <h2 className="font-bold text-base mb-5"
-            style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-            🧠 Skills Comparison
-          </h2>
-          <div className="grid sm:grid-cols-3 gap-5">
-
-            {/* Gained */}
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-3"
-                style={{ color: "#10b981", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                ✅ Gained ({gained.length})
-              </p>
-              {gained.length === 0 ? (
-                <p className="text-xs" style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                  No new skills
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {gained.map((s, i) => (
-                    <span key={i} className="text-xs px-2.5 py-1 rounded-lg font-medium"
-                      style={{
-                        background: "rgba(16,185,129,0.1)",
-                        border: "1px solid rgba(16,185,129,0.25)",
-                        color: "#10b981",
-                        fontFamily: "Plus Jakarta Sans, sans-serif",
-                      }}>
-                      {s}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Common */}
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-3"
-                style={{ color: "#3b6ef8", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                🔵 Retained ({common.length})
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {common.slice(0, 12).map((s, i) => (
-                  <span key={i} className="skill-pill">{s}</span>
+    <>
+      <PageHeader
+        title="Compare analyses"
+        description={`How your resume changed from ${longDate(older.createdAt)} to ${longDate(newer.createdAt)}.`}
+        actions={<Button icon={ArrowLeft} onClick={() => onNavigate("history")}>Back to history</Button>}
+      />
+      <div className="space-y-6">
+        <Card padding="none">
+          {/* relative: keeps sr-only (absolute) labels inside the scroll area instead of widening the page. */}
+          <div className="relative overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm" aria-label="Comparison">
+              <thead>
+                <tr className="border-b border-line">
+                  <th scope="col" className="px-4 py-3 text-left align-bottom text-xs font-medium uppercase tracking-[0.02em] text-ink-muted">Metric</th>
+                  {column(older, "Older")}
+                  <th scope="col" className="bg-page px-4 py-3 text-left align-bottom text-xs font-medium uppercase tracking-[0.02em] text-ink-muted">Change</th>
+                  {column(newer, "Newer")}
+                </tr>
+              </thead>
+              <tbody>
+                <Row label="ATS score" before={older.atsScore ?? null} after={newer.atsScore ?? null} />
+                <Row label="Skills found" before={older.skills?.length ?? 0} after={newer.skills?.length ?? 0} />
+                <Row label="Best role match" before={older.bestRole?.score ?? null} after={newer.bestRole?.score ?? null} unit="%" />
+                <tr className="border-b border-line">
+                  <th scope="rowgroup" colSpan={4} className="bg-page px-4 py-2 text-left text-xs font-medium uppercase tracking-[0.02em] text-ink-muted">Role match</th>
+                </tr>
+                {visibleRoles.map(({ role, before, after }) => (
+                  <Row key={role} label={roleLabel(role)} icon={roleIcon(role)} before={before} after={after} unit="%" />
                 ))}
-                {common.length > 12 && (
-                  <span className="skill-pill">+{common.length - 12}</span>
-                )}
-              </div>
-            </div>
-
-            {/* Lost */}
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-3"
-                style={{ color: "#ef4444", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                ❌ Removed ({lost.length})
-              </p>
-              {lost.length === 0 ? (
-                <p className="text-xs" style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                  No removed skills
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {lost.map((s, i) => (
-                    <span key={i} className="text-xs px-2.5 py-1 rounded-lg font-medium"
-                      style={{
-                        background: "rgba(239,68,68,0.08)",
-                        border: "1px solid rgba(239,68,68,0.2)",
-                        color: "#ef4444",
-                        fontFamily: "Plus Jakarta Sans, sans-serif",
-                      }}>
-                      {s}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
+              </tbody>
+            </table>
           </div>
-        </div>
-
-        {/* ── Role match comparison bars ── */}
-        {sharedRoles.length > 0 && (
-          <div className="glass rounded-3xl p-6">
-            <h2 className="font-bold text-base mb-5"
-              style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-              🎯 Role Match — Before vs After
-            </h2>
-            <div className="space-y-5">
-              {sharedRoles.map(({ role, scoreA: sA, scoreB: sB, emoji }) => (
-                <div key={role}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium capitalize"
-                      style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                      {emoji} {role}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs" style={{ color: "var(--text-3)" }}>{sA}%</span>
-                      <span style={{ color: "var(--text-3)", fontSize: "0.7rem" }}>→</span>
-                      <span className="text-sm font-bold" style={{ color: sB >= sA ? "#10b981" : "#ef4444" }}>
-                        {sB}%
-                      </span>
-                      <DeltaBadge delta={sB - sA} />
-                    </div>
-                  </div>
-                  {/* Stacked bars */}
-                  <div style={{ position: "relative", height: 10, borderRadius: 999, background: "rgba(180,190,220,0.15)", overflow: "hidden" }}>
-                    {/* A bar (faint) */}
-                    <div style={{
-                      position: "absolute", left: 0, top: 0, bottom: 0,
-                      width: `${sA}%`, borderRadius: 999,
-                      background: "rgba(180,190,220,0.5)",
-                      transition: "width 0.8s cubic-bezier(.4,0,.2,1)",
-                    }} />
-                    {/* B bar */}
-                    <div style={{
-                      position: "absolute", left: 0, top: 0, bottom: 0,
-                      width: `${sB}%`, borderRadius: 999,
-                      background: sB >= sA
-                        ? "linear-gradient(90deg,#3b6ef8,#10b981)"
-                        : "linear-gradient(90deg,#ef4444,#f59e0b)",
-                      opacity: 0.85,
-                      transition: "width 0.8s cubic-bezier(.4,0,.2,1)",
-                    }} />
-                  </div>
-                </div>
-              ))}
+          {roles.length > 6 && (
+            <div className="border-t border-line px-4 py-2.5">
+              <Button variant="ghost" size="sm" aria-expanded={showAllRoles} onClick={() => setShowAllRoles((value) => !value)}>
+                {showAllRoles ? "Show top 6 roles" : `Show all ${roles.length} roles`}
+              </Button>
             </div>
-            <p className="text-xs mt-4" style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-              Faint bar = Resume A · Colored bar = Resume B
-            </p>
+          )}
+        </Card>
+
+        <Card as="section" title="Skills">
+          <div className="grid gap-5 md:grid-cols-3">
+            <SkillList title="Gained" skills={gained} tone="success" />
+            <SkillList title="Kept" skills={kept} tone="neutral" />
+            <SkillList title="Removed" skills={removed} tone="danger" />
           </div>
-        )}
-
-        {/* ── CTA ── */}
-        <div className="flex gap-3 flex-wrap">
-          <button onClick={() => onNavigate("analyze")}
-            className="btn-primary px-6 py-3 rounded-xl text-sm">
-            Analyze New Resume →
-          </button>
-          <button onClick={() => onNavigate("history")}
-            className="px-6 py-3 rounded-xl text-sm font-medium"
-            style={{
-              background: "rgba(255,255,255,0.5)",
-              border: "1px solid rgba(180,190,220,0.4)",
-              color: "var(--text)",
-              fontFamily: "Plus Jakarta Sans, sans-serif",
-            }}>
-            Back to History
-          </button>
-        </div>
-
+        </Card>
       </div>
-    </div>
+    </>
   );
 }

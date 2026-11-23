@@ -1,263 +1,150 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
+import { FileSearch, GitCompare, Trash2 } from "lucide-react";
+import { Badge, Button, Card, EmptyState, Icon, InlineAlert, LoadingState, PageHeader, cx, scoreTone } from "../components/ui";
+import { roleIcon, roleLabel } from "../constants/targetRoles";
+import { longDate } from "../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
+const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
+const ATS_TONE = { warning: "warning", brand: "brand", success: "success" };
+
+function DeleteCell({ entry, onDelete }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  if (!confirming) {
+    return (
+      <Button variant="ghost" size="sm" icon={Trash2} aria-label={`Delete ${entry.resumeName}`} onClick={() => setConfirming(true)}
+        className="text-ink-muted hover:text-danger" />
+    );
+  }
+  return (
+    <span className="flex items-center justify-end gap-1.5">
+      <Button variant="danger" size="sm" loading={busy} aria-label={`Confirm delete ${entry.resumeName}`}
+        onClick={async () => { setBusy(true); if (!(await onDelete(entry._id))) { setBusy(false); setConfirming(false); } }}>
+        Delete
+      </Button>
+      <Button variant="ghost" size="sm" onClick={() => setConfirming(false)} disabled={busy}>Cancel</Button>
+    </span>
+  );
+}
 
 export default function History({ onNavigate }) {
-  const [history,   setHistory]   = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState("");
-  const [selected,  setSelected]  = useState([]);   // ← IDs of checked analyses
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [selected, setSelected] = useState([]); // up to 2 analysis IDs, in click order
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const res = await axios.get(`${API}/api/history`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setHistory(Array.isArray(res.data) ? res.data : []);
-      } catch { setError("Failed to load history."); }
-      finally   { setLoading(false); }
-    })();
+  const load = useCallback(() => {
+    setLoading(true);
+    setError("");
+    axios.get(`${API}/api/history`, auth())
+      .then(({ data }) => setHistory(Array.isArray(data) ? data : []))
+      .catch(() => setError("Could not load your history."))
+      .finally(() => setLoading(false));
   }, []);
+  useEffect(() => { load(); }, [load]);
 
-  const deleteEntry = async (id) => {
+  // Returns true when deleted, so the row can reset its confirm state on failure.
+  const remove = async (id) => {
+    setDeleteError("");
     try {
-      const token = localStorage.getItem("token");
-      await axios.delete(`${API}/api/history/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setHistory(p => p.filter(h => h._id !== id));
-      setSelected(p => p.filter(s => s !== id));
-    } catch { alert("Failed to delete."); }
+      await axios.delete(`${API}/api/history/${id}`, auth());
+      setHistory((items) => items.filter((item) => item._id !== id));
+      setSelected((ids) => ids.filter((item) => item !== id));
+      return true;
+    } catch {
+      setDeleteError("Could not delete the analysis. Try again.");
+      return false;
+    }
   };
 
-  // ── Toggle checkbox selection ──
-  const toggleSelect = (id) => {
-    setSelected(prev => {
-      if (prev.includes(id)) return prev.filter(s => s !== id);
-      if (prev.length >= 2)  return [prev[1], id];   // max 2, slide window
-      return [...prev, id];
-    });
-  };
-
-  const canCompare = selected.length === 2;
-
-  const handleCompare = () => {
-    if (!canCompare) return;
-    const [a, b] = selected.map(id => history.find(h => h._id === id));
-    onNavigate("compare", { analysisA: a, analysisB: b });
+  // Two at most: picking a third replaces the oldest pick.
+  const toggle = (id) => setSelected((ids) => (ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id].slice(-2)));
+  const compare = () => {
+    const [analysisA, analysisB] = selected.map((id) => history.find((item) => item._id === id));
+    onNavigate("compare", { analysisA, analysisB });
   };
 
   return (
-    <div className="min-h-screen px-6 py-12">
-      <div className="max-w-5xl mx-auto">
+    <>
+      <PageHeader
+        title="History"
+        description="Every analysis you have run. Select two to compare them."
+        actions={history.length >= 2 && (
+          <Button variant="primary" icon={GitCompare} onClick={compare} disabled={selected.length !== 2}>Compare selected</Button>
+        )}
+      />
+      {deleteError && <InlineAlert className="mb-4" onDismiss={() => setDeleteError("")}>{deleteError}</InlineAlert>}
 
-        {/* ── Header ── */}
-        <div className="mb-8 flex items-end justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-3xl font-bold mb-1"
-              style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-              Analysis{" "}
-              <span style={{ fontFamily: "'Instrument Serif',serif", fontStyle: "italic" }}
-                className="gradient-text">History</span>
-            </h1>
-            <p className="text-sm" style={{ color: "var(--text-2)" }}>
-              Your past resume analyses, stored securely.
-              {history.length >= 2 && (
-                <span style={{ color: "var(--text-3)" }}>
-                  {" "}· Select 2 to compare
-                </span>
-              )}
+      {loading ? <LoadingState label="Loading your history" /> : error ? (
+        <InlineAlert title={error} action={<Button size="sm" onClick={load}>Try again</Button>}>Check your connection, then try again.</InlineAlert>
+      ) : !history.length ? (
+        <Card>
+          <EmptyState icon={FileSearch} title="No analyses yet" description="Analyze a resume and it will be saved here."
+            action={<Button variant="primary" onClick={() => onNavigate("analyze")}>Analyze resume</Button>} />
+        </Card>
+      ) : (
+        <Card padding="none">
+          {selected.length > 0 && (
+            <p role="status" className="border-b border-line px-4 py-2.5 text-sm text-ink-secondary">
+              {selected.length === 1 ? "1 selected. Select one more to compare." : "2 selected."}{" "}
+              <button type="button" onClick={() => setSelected([])} className="rounded-control font-medium text-brand hover:underline">Clear</button>
             </p>
-          </div>
-
-          {/* ── Compare button — appears when 2 selected ── */}
-          <button
-            onClick={handleCompare}
-            disabled={!canCompare}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all"
-            style={{
-              background:   canCompare ? "linear-gradient(135deg,#3b6ef8,#6c63ff)" : "rgba(180,190,220,0.15)",
-              color:        canCompare ? "#fff"                                      : "var(--text-3)",
-              border:       canCompare ? "none"                                      : "1px solid rgba(180,190,220,0.3)",
-              cursor:       canCompare ? "pointer"                                   : "not-allowed",
-              fontFamily:   "Plus Jakarta Sans, sans-serif",
-              opacity:      canCompare ? 1 : 0.6,
-              transition:   "all 0.25s",
-              boxShadow:    canCompare ? "0 4px 14px rgba(59,110,248,0.3)" : "none",
-            }}>
-            🔀 Compare {canCompare ? "Selected" : "(select 2)"}
-          </button>
-        </div>
-
-        {/* ── Selection hint bar ── */}
-        {selected.length > 0 && (
-          <div className="mb-4 px-4 py-3 rounded-xl text-sm flex items-center justify-between"
-            style={{
-              background: "rgba(59,110,248,0.06)",
-              border: "1px solid rgba(59,110,248,0.18)",
-              fontFamily: "Plus Jakarta Sans, sans-serif",
-            }}>
-            <span style={{ color: "#3b6ef8" }}>
-              {selected.length === 1
-                ? "1 selected — pick one more to compare"
-                : "2 selected — ready to compare!"}
-            </span>
-            <button
-              onClick={() => setSelected([])}
-              className="text-xs px-2 py-0.5 rounded"
-              style={{ color: "var(--text-3)", background: "rgba(180,190,220,0.2)" }}>
-              Clear
-            </button>
-          </div>
-        )}
-
-        {loading && (
-          <div className="flex justify-center py-24">
-            <svg className="animate-spin h-8 w-8" style={{ color: "#3b6ef8" }} viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-            </svg>
-          </div>
-        )}
-
-        {error && (
-          <div className="glass rounded-2xl p-6 text-center text-sm"
-            style={{ color: "#e11d6a" }}>{error}</div>
-        )}
-
-        {!loading && !error && history.length === 0 && (
-          <div className="glass rounded-3xl p-16 text-center">
-            <div className="text-5xl mb-4">📭</div>
-            <h3 className="font-bold text-lg mb-1"
-              style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-              No analyses yet
-            </h3>
-            <p className="text-sm" style={{ color: "var(--text-2)" }}>
-              Upload your first resume to get started.
-            </p>
-          </div>
-        )}
-
-        <div className="space-y-4">
-          {history.map((entry) => {
-            const isSelected = selected.includes(entry._id);
-            return (
-              <div key={entry._id}
-                className="glass rounded-2xl p-6 transition-all duration-200"
-                style={{
-                  border: isSelected
-                    ? "1.5px solid rgba(59,110,248,0.45)"
-                    : "1.5px solid transparent",
-                  background: isSelected ? "rgba(59,110,248,0.03)" : undefined,
-                }}>
-
-                <div className="flex items-start justify-between gap-4 mb-4">
-
-                  {/* ── Checkbox ── */}
-                  <div className="flex items-start gap-3">
-                    <button
-                      onClick={() => toggleSelect(entry._id)}
-                      title={isSelected ? "Deselect" : "Select for comparison"}
-                      className="mt-0.5 flex-shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all"
-                      style={{
-                        borderColor: isSelected ? "#3b6ef8" : "rgba(180,190,220,0.6)",
-                        background:  isSelected ? "#3b6ef8" : "rgba(255,255,255,0.5)",
-                      }}>
-                      {isSelected && (
-                        <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                          <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      )}
-                    </button>
-
-                    <div>
-                      <div className="flex items-center gap-2.5 mb-1">
-                        <span className="font-bold text-sm capitalize"
-                          style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                          {entry.bestRole?.role || "Unknown Role"}
-                        </span>
-                        {entry.bestRole?.score >= 0 && (
-                          <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold skill-pill">
-                            {entry.bestRole.score}% match
+          )}
+          {/* Scrolls inside the card on narrow screens instead of squeezing columns. */}
+          {/* relative: keeps sr-only (absolute) labels inside the scroll area instead of widening the page. */}
+          <div className="relative overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-sm" aria-label="Analyses">
+              <thead>
+                <tr className="border-b border-line text-xs font-medium uppercase tracking-[0.02em] text-ink-muted">
+                  <th scope="col" className="w-12 px-4 py-2.5"><span className="sr-only">Select</span></th>
+                  <th scope="col" className="px-2 py-2.5">File</th>
+                  <th scope="col" className="px-2 py-2.5">Target role</th>
+                  <th scope="col" className="px-2 py-2.5">ATS</th>
+                  <th scope="col" className="px-2 py-2.5">Top role</th>
+                  <th scope="col" className="px-2 py-2.5">Date</th>
+                  <th scope="col" className="px-4 py-2.5 text-right"><span className="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((entry) => {
+                  const isSelected = selected.includes(entry._id);
+                  const top = entry.bestRole?.role;
+                  return (
+                    <tr key={entry._id} className={cx("border-b border-line last:border-0", isSelected && "bg-brand-tint")}>
+                      <td className="px-4 py-3">
+                        <input type="checkbox" checked={isSelected} onChange={() => toggle(entry._id)}
+                          aria-label={`Select ${entry.resumeName} from ${longDate(entry.createdAt)}`}
+                          className="h-4 w-4 rounded border-line-strong accent-brand" />
+                      </td>
+                      <td className="max-w-[240px] px-2 py-3">
+                        <span className="block truncate font-medium text-ink" title={entry.resumeName}>{entry.resumeName}</span>
+                        <span className="text-ink-muted">{entry.skills?.length || 0} skills</span>
+                      </td>
+                      <td className="px-2 py-3 text-ink-secondary">{entry.targetRole ? roleLabel(entry.targetRole) : <span className="text-ink-muted">Auto</span>}</td>
+                      <td className="px-2 py-3">
+                        {entry.atsScore != null ? <Badge tone={ATS_TONE[scoreTone(entry.atsScore)]}><span className="tabular">{entry.atsScore}</span></Badge> : "–"}
+                      </td>
+                      <td className="px-2 py-3">
+                        {top ? (
+                          <span className="flex items-center gap-2 text-ink-secondary">
+                            <Icon icon={roleIcon(top)} className="shrink-0 text-ink-muted" />
+                            {roleLabel(top)} <span className="tabular text-ink-muted">{entry.bestRole.score}%</span>
                           </span>
-                        )}
-                        {entry.atsScore != null && (
-                          <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold"
-                            style={{
-                              background: "rgba(16,185,129,0.1)",
-                              color: "#10b981",
-                              border: "1px solid rgba(16,185,129,0.2)",
-                            }}>
-                            ATS {entry.atsScore}
-                          </span>
-                        )}
-                        {entry.targetRole && (
-                          <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold"
-                            style={{
-                              background: "rgba(59,110,248,0.08)",
-                              color: "#3b6ef8",
-                              border: "1px solid rgba(59,110,248,0.2)",
-                            }}>
-                            🎯 {entry.targetRole}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs" style={{ color: "var(--text-3)" }}>
-                        {entry.resumeName} · {new Date(entry.createdAt).toLocaleDateString("en-US", {
-                          day: "numeric", month: "short", year: "numeric"
-                        })}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button onClick={() => deleteEntry(entry._id)}
-                    className="text-xs px-3 py-1.5 rounded-lg font-medium transition flex-shrink-0"
-                    style={{
-                      color: "#e11d6a",
-                      background: "rgba(244,63,126,0.06)",
-                      border: "1px solid rgba(244,63,126,0.15)",
-                    }}>
-                    Delete
-                  </button>
-                </div>
-
-                {entry.skills?.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-4">
-                    {entry.skills.slice(0, 10).map((s, j) => (
-                      <span key={j} className="skill-pill">{s}</span>
-                    ))}
-                    {entry.skills.length > 10 && (
-                      <span className="skill-pill">+{entry.skills.length - 10}</span>
-                    )}
-                  </div>
-                )}
-
-                {entry.match && Object.keys(entry.match).length > 0 && (
-                  <div className="grid sm:grid-cols-3 gap-3">
-                    {Object.entries(entry.match)
-                      .sort((a, b) => parseInt(b[1].score) - parseInt(a[1].score))
-                      .slice(0, 3)
-                      .map(([role, data]) => (
-                        <div key={role}>
-                          <div className="flex justify-between mb-1">
-                            <span className="text-xs capitalize" style={{ color: "var(--text-2)" }}>{role}</span>
-                            <span className="text-xs font-semibold" style={{ color: "var(--text)" }}>{data.score}%</span>
-                          </div>
-                          <div className="progress-track">
-                            <div className="progress-fill" style={{ width: `${data.score}%` }} />
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
+                        ) : "–"}
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-3 text-ink-secondary">{longDate(entry.createdAt)}</td>
+                      <td className="px-4 py-3 text-right"><DeleteCell entry={entry} onDelete={remove} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </>
   );
 }
