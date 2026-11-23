@@ -22,6 +22,9 @@ from roadmap import (RoadmapInputError, RoadmapOutputError, ROADMAP_INVALID_MESS
                      parse_roadmap_request, generate_roadmap)
 from resume_builder import (ResumeInputError, ResumeOutputError, ENHANCE_INVALID_MESSAGE,
                             parse_enhance_request, enhance_bullets)
+from interview import (InterviewInputError, InterviewOutputError, QUESTIONS_INVALID_MESSAGE,
+                       FEEDBACK_INVALID_MESSAGE, parse_questions_request, generate_questions,
+                       parse_evaluate_request, evaluate_answer)
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -889,6 +892,44 @@ def resume_score():
     text = data["text"]
     ats_total, ats_breakdown, ml_insights = compute_ats_score_ml(text, extract_skills(text))
     return jsonify({"ats_score": ats_total, "ats_breakdown": ats_breakdown, "ml_insights": ml_insights})
+
+
+@app.route("/interview/questions", methods=["POST"])
+def interview_questions():
+    try:
+        payload = parse_questions_request(request.get_json(silent=True))
+    except InterviewInputError as error:
+        return jsonify({"error": str(error)}), error.status
+    try:
+        return jsonify({"questions": generate_questions(payload, generate)})
+    except InterviewOutputError:
+        return jsonify({"error": QUESTIONS_INVALID_MESSAGE}), 502
+    except LLMError as error:
+        if str(error) == "AI returned invalid JSON after one retry.":
+            return jsonify({"error": QUESTIONS_INVALID_MESSAGE}), 502
+        return jsonify({"error": str(error)}), 503
+    except Exception:
+        app.logger.exception("Interview questions failed")
+        return jsonify({"error": "Interview questions unavailable"}), 503
+
+
+@app.route("/interview/evaluate", methods=["POST"])
+def interview_evaluate():
+    try:
+        payload = parse_evaluate_request(request.get_json(silent=True))
+    except InterviewInputError as error:
+        return jsonify({"error": str(error)}), error.status
+    try:
+        return jsonify(evaluate_answer(payload, generate))
+    except InterviewOutputError:
+        return jsonify({"error": FEEDBACK_INVALID_MESSAGE}), 502
+    except LLMError as error:
+        if str(error) == "AI returned invalid JSON after one retry.":
+            return jsonify({"error": FEEDBACK_INVALID_MESSAGE}), 502
+        return jsonify({"error": str(error)}), 503
+    except Exception:
+        app.logger.exception("Interview evaluation failed")
+        return jsonify({"error": "Answer evaluation unavailable"}), 503
 
 
 @app.route("/retrain", methods=["POST"])

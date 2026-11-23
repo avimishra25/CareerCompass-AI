@@ -72,6 +72,13 @@ The ATS model trains on 600 synthetic feature samples across three quality tiers
 - Single-column, serif, ATS-friendly preview; import grouped skills and summary from your latest analysis
 - Save up to 20 drafts and export an A4 PDF with selectable text
 
+### 🎤 Interview Prep with AI Feedback
+- Sessions of 5 questions for one of the 12 target roles: Technical, HR, Behavioural, or Technical + HR; Beginner to Advanced
+- Questions are built from your latest analysis: at least one targets a skill gap and at least one targets a project from your resume
+- Type an answer or use **Answer by voice** (browser speech-to-text, shown only where the browser supports it)
+- Feedback per answer: 1–10 scores for relevance, technical accuracy, structure (STAR for HR/behavioural), clarity and depth; strengths, improvements and a model answer outline
+- Interview readiness: average score of your last 5 sessions and the change versus the 5 before
+
 ### 💬 AI Career Chatbot
 - Google Gemini powered career advisor
 - Full validated conversation history and resume ML insights retained per request
@@ -179,6 +186,13 @@ bullets before returning them. As you edit, React sends the resume's plain text 
 Flask scores it with the same `extract_skills` + `compute_ats_score_ml` pipeline as `/analyze`. Drafts are stored
 in MongoDB (`ResumeDraft`) only when you click Save draft.
 
+Interview prep: React sends `{ role, type, difficulty }` to Node `/api/interview/start`. Node loads your latest
+analysis (or the `analysisId` you send, if it is yours), and sends its skills, the role's missing skills and the
+project titles found in the resume's Projects section to Flask `/interview/questions`, which asks Gemini (through
+`llm.py`, JSON mode) for 5 questions and validates them. Node saves an `InterviewSession`. Each answer goes to
+`/api/interview/:id/answer`; Node forwards the question, type, role and answer to Flask `/interview/evaluate`,
+recomputes the overall score from the five rubric scores, and stores the feedback on that question.
+
 ---
 
 ## 🔐 Authentication Flow
@@ -252,13 +266,15 @@ CareerCompass-AI/
 │   │   ├── constants/              # targetRoles (the 12 roles shared by Analyze and Roadmap)
 │   │   ├── utils/                  # resumeDraft (draft shape, plain text), resumePdf (A4 export)
 │   │   ├── pages/                  # AuthPage, OAuthSuccess, UploadResume, History, Dashboard,
-│   │   │                           # JDMatch, Roadmap, ResumeBuilder, About, Compare, Profile
+│   │   │                           # JDMatch, Roadmap, ResumeBuilder, InterviewPrep, About, Compare, Profile
 │   │   └── App.js
 ├── server/                         # Node.js backend
 │   ├── config/                     # passport.js (Google OAuth strategy)
 │   ├── middleware/                 # JWT auth middleware
-│   ├── lib/                        # resumeBuilder.js (draft limits/validation, skill grouping)
-│   ├── models/                     # User, Analysis (+ resumeText), JDMatch, CareerRoadmap, ResumeDraft
+│   ├── lib/                        # resumeBuilder.js (draft limits/validation, skill grouping),
+│   │                               # interview.js (limits, project titles, feedback validation)
+│   ├── models/                     # User, Analysis (+ resumeText), JDMatch, CareerRoadmap, ResumeDraft,
+│   │                               # InterviewSession
 │   ├── routes/                     # auth.js (Google OAuth, /me)
 │   ├── server.js
 │   └── .env
@@ -267,6 +283,7 @@ CareerCompass-AI/
     ├── llm.py                      # Swappable text-generation provider
     ├── roadmap.py                  # Gap ordering + roadmap response validation
     ├── resume_builder.py           # Notes → bullets prompt + number-hallucination guard
+    ├── interview.py                # Question generation + rubric feedback validation
     ├── requirements.txt
     └── .env
 ```
@@ -393,6 +410,48 @@ characters (projects also take up to 15 tech tags); up to 6 education entries; a
 `POST /resume/enhance` and `POST /resume/score` require `X-Internal-Key` and apply the same input limits.
 No new environment variables are needed.
 
+## 🎤 Interview Prep: Rules and Limits
+
+**Questions.** Starting a session sends Flask the role, type, difficulty, up to 300 resume skills, up to 50
+skill gaps (the role's missing skills from your analysis, minus skills already on the resume) and up to 5
+project titles. Project titles are the non-bullet lines under the resume's Projects heading, cut before any
+` - `, ` | `, `: ` or `(` (tech stack, dates). Lines that look like sentences or wrapped bullets are skipped.
+Without any analysis, a session still starts with general questions. Flask checks the model's 5 questions:
+- each is non-blank and at most 300 characters, of an allowed type for the session, with no duplicates
+- question IDs (`q1`–`q5`) are assigned by Flask, not the model
+- what each question tests is decided by Flask: a **gap**, **project** or **skill** when the model's target
+  names one from the input (exact or whole-word match), otherwise a free **topic**
+- at least one question targets a gap and one a project (when you have any), and a Technical + HR session
+  contains both technical and HR/behavioural questions
+
+**Feedback.** The model returns five integer scores from 1 to 10, 1–3 strengths, 1–3 improvements (each at
+most 300 characters) and a model answer outline of at most 300 characters. For HR and behavioural questions,
+*structure* scores the STAR format (Situation, Task, Action, Result). The **overall score is the mean of the five
+scores rounded to one decimal place, recomputed by Flask and again by Node**; any overall the model sends is
+ignored. An answer under 15 words never reaches the AI: it scores 1 on every criterion with a fixed tip and a
+generic outline. A session's score is the mean of its answered questions. The session is marked completed when
+all 5 are answered, and an answered question cannot be answered again (409).
+
+Invalid model output is retried once, then Flask returns 502 `AI returned invalid questions. Try again.` or
+`AI returned invalid feedback. Try again.` The ATS caveat applies here too: these scores are AI coaching
+feedback, not a prediction of any real interview outcome.
+
+**Answer by voice** uses the browser's Web Speech API (Chrome, Edge, Safari) and is hidden where it is not
+supported. Speech is transcribed by the browser vendor's service, not by CareerCompass; only the resulting
+text is sent when you submit.
+
+API (all JWT-protected and owner-scoped; another user's session returns 404; malformed IDs return 400):
+- `POST /api/interview/start` `{ role, type: technical|hr|behavioural|mixed, difficulty: beginner|intermediate|advanced, analysisId? }`
+  returns the new session (201). It is limited to 10 requests/user/15 minutes.
+- `POST /api/interview/:id/answer` `{ qid, answer ≤4000 }` returns the updated session. An empty answer is
+  allowed and scored as a short answer. It is limited to 40 requests/user/15 minutes.
+- `GET /api/interview/history` lists your latest 50 sessions (role, type, difficulty, status, overallScore, and
+  per-question qid/overall/answeredAt, with no question text, answers or feedback).
+- `GET /api/interview/:id` returns one session with answers and feedback.
+
+The internal Flask routes `POST /interview/questions` and `POST /interview/evaluate` require `X-Internal-Key`
+and apply the same input limits. No new environment variables are needed.
+
 ### Tests and manual checks
 
 From the repository root, after completing local setup:
@@ -474,7 +533,7 @@ Verify the proxy topology before changing it, since it controls the IP used for 
 
 Security limits: `/api` permits 300 requests per 15 minutes per IP; authenticated chat permits 20 per user per 15 minutes;
 roadmap generation permits 10 per user per 15 minutes; resume-builder AI suggestions permit 30, and live scoring 120,
-per user per 15 minutes.
+per user per 15 minutes; interview sessions permit 10 starts and 40 answers per user per 15 minutes.
 These counters are in memory per Node process and reset on restart; multiple replicas require a shared store.
 Uploads require one PDF, PDF MIME type, `.pdf` extension, and `%PDF-` signature; Node limits file size to 5 MiB.
 Flask limits the entire request (including multipart overhead) to 5 MiB and uses at most 50,000 extracted characters.

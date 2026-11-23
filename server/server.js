@@ -19,6 +19,8 @@ const JDMatch    = require("./models/JDMatch");
 const CareerRoadmap = require("./models/CareerRoadmap");
 const ResumeDraft = require("./models/ResumeDraft");
 const { LIMITS: RESUME_LIMITS, DraftError, parseDraft, enhanceError, groupSkills, extractSummary } = require("./lib/resumeBuilder");
+const InterviewSession = require("./models/InterviewSession");
+const interview = require("./lib/interview");
 
 const ML_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 const app    = express();
@@ -66,6 +68,22 @@ const resumeScoreLimit = rateLimit({
   legacyHeaders: false,
   message: { error: "Live scoring paused. Try again in a few minutes." },
 });
+const interviewStartLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  keyGenerator: (req) => String(req.user._id),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many interview sessions started. Try again later." },
+});
+const interviewAnswerLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  keyGenerator: (req) => String(req.user._id),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many answers submitted. Try again later." },
+});
 const isObjectId = (value) => typeof value === "string" && /^[a-f\d]{24}$/i.test(value);
 // Known-safe ML service messages that may reach the browser; anything else is replaced.
 const SAFE_AI_ERRORS = [
@@ -77,6 +95,8 @@ const SAFE_AI_ERRORS = [
   "AI returned invalid JSON after one retry.",
   "AI returned an invalid roadmap. Try again.",
   "AI returned an invalid suggestion. Try again.",
+  "AI returned invalid questions. Try again.",
+  "AI returned invalid feedback. Try again.",
 ];
 // Must match ROLE_DEFINITIONS in ml-service/app.py (the roles stored in Analysis.match).
 const ROADMAP_ROLES = [
@@ -630,6 +650,131 @@ app.post("/api/resume-builder/import", protect, async (req, res) => {
     res.json({ analysisId: analysis._id, resumeName: analysis.resumeName, summarySource, sections: { summary, skills } });
   } catch {
     res.status(500).json({ error: "Could not import analysis" });
+  }
+});
+
+// ─── Interview prep ───────────────────────────────────────────
+const INTERVIEW_QUESTION_COUNT = 5;
+// The history list never includes answers or feedback text.
+const SESSION_LIST_FIELDS = "role type difficulty status overallScore createdAt updatedAt questions.qid questions.overall questions.answeredAt";
+const QID = /^q\d{1,2}$/;
+const aiFailure = (res, error, fallback) => {
+  const status = [400, 413, 429, 502].includes(error.response?.status) ? error.response.status : 503;
+  const message = error.response?.data?.error;
+  res.status(status).json({ error: SAFE_AI_ERRORS.includes(message) ? message : fallback });
+};
+
+app.post("/api/interview/start", protect, interviewStartLimit, async (req, res) => {
+  const data = req.body;
+  if (!data || typeof data !== "object" || Array.isArray(data) ||
+      Object.keys(data).some((key) => !["role", "type", "difficulty", "analysisId"].includes(key)) ||
+      !ROADMAP_ROLES.includes(data.role) || !interview.SESSION_TYPES.includes(data.type) ||
+      !interview.DIFFICULTIES.includes(data.difficulty) ||
+      (data.analysisId !== undefined && data.analysisId !== null && !isObjectId(data.analysisId))) {
+    return res.status(400).json({ error: "Invalid interview payload" });
+  }
+  try {
+    // An explicit analysis must be the caller's; otherwise use their latest one (or none).
+    const analysis = data.analysisId
+      ? await Analysis.findOne({ _id: data.analysisId, user: req.user._id }).select("+resumeText")
+      : await Analysis.findOne({ user: req.user._id }).sort({ createdAt: -1 }).select("+resumeText");
+    if (data.analysisId && !analysis) return res.status(404).json({ error: "Analysis not found" });
+    const roleMatch = typeof analysis?.match?.get === "function" ? analysis.match.get(data.role) : analysis?.match?.[data.role];
+    const skills = skillList(analysis?.skills, interview.LIMITS.skills);
+    const known = new Set(skills.map((skill) => skill.toLowerCase()));
+    const payload = {
+      role: data.role, type: data.type, difficulty: data.difficulty, resume_skills: skills,
+      gaps: skillList(roleMatch?.missing, interview.LIMITS.gaps).filter((skill) => !known.has(skill.toLowerCase())),
+      projects: interview.extractProjectTitles(analysis?.resumeText), count: INTERVIEW_QUESTION_COUNT,
+    };
+    let questions;
+    try {
+      const response = await axios.post(`${ML_URL}/interview/questions`, payload, { headers: internalHeaders(), timeout: 60000 });
+      if (!interview.validQuestions(response.data, data.type, INTERVIEW_QUESTION_COUNT)) {
+        return res.status(503).json({ error: "Interview questions unavailable" });
+      }
+      questions = response.data.questions;
+    } catch (error) {
+      return aiFailure(res, error, "Interview questions unavailable");
+    }
+    const session = await InterviewSession.create({
+      userId: req.user._id, analysisId: analysis?._id || null, role: data.role, type: data.type, difficulty: data.difficulty,
+      questions: questions.map(({ id, text, type, targets, target_kind }) => ({ qid: id, text, type, targets, targetKind: target_kind })),
+    });
+    res.status(201).json(session);
+  } catch {
+    res.status(500).json({ error: "Could not start interview session" });
+  }
+});
+
+app.get("/api/interview/history", protect, async (req, res) => {
+  try {
+    const sessions = await InterviewSession.find({ userId: req.user._id }).select(SESSION_LIST_FIELDS)
+      .sort({ createdAt: -1 }).limit(50).lean();
+    res.json(sessions);
+  } catch {
+    res.status(500).json({ error: "Could not load interview history" });
+  }
+});
+
+app.get("/api/interview/:id", protect, async (req, res) => {
+  if (!isObjectId(req.params.id)) return res.status(400).json({ error: "Invalid session ID" });
+  try {
+    const session = await InterviewSession.findOne({ _id: req.params.id, userId: req.user._id }).lean();
+    if (!session) return res.status(404).json({ error: "Session not found" });
+    res.json(session);
+  } catch {
+    res.status(500).json({ error: "Could not load session" });
+  }
+});
+
+app.post("/api/interview/:id/answer", protect, interviewAnswerLimit, async (req, res) => {
+  const data = req.body;
+  if (!isObjectId(req.params.id) || !data || typeof data !== "object" || Array.isArray(data) ||
+      Object.keys(data).length !== 2 || typeof data.qid !== "string" || !QID.test(data.qid) ||
+      typeof data.answer !== "string") {
+    return res.status(400).json({ error: "Invalid answer payload" });
+  }
+  if (interview.chars(data.answer) > interview.LIMITS.answer) {
+    return res.status(413).json({ error: `Answer exceeds ${interview.LIMITS.answer} characters` });
+  }
+  const answer = data.answer.trim();
+  try {
+    const session = await InterviewSession.findOne({ _id: req.params.id, userId: req.user._id }).lean();
+    const question = session?.questions.find((item) => item.qid === data.qid);
+    if (!question) return res.status(404).json({ error: session ? "Question not found" : "Session not found" });
+    if (question.answeredAt) return res.status(409).json({ error: "This question is already answered" });
+    let feedback;
+    try {
+      const response = await axios.post(`${ML_URL}/interview/evaluate`,
+        { question: question.text, type: question.type, role: session.role, answer },
+        { headers: internalHeaders(), timeout: 30000 });
+      feedback = interview.parseFeedback(response.data);
+      if (!feedback) return res.status(503).json({ error: "Answer evaluation unavailable" });
+    } catch (error) {
+      return aiFailure(res, error, "Answer evaluation unavailable");
+    }
+    // Only an unanswered question is updated, so a double submit cannot overwrite feedback.
+    const set = Object.fromEntries(Object.entries({ answer, ...feedback, answeredAt: new Date() })
+      .map(([key, value]) => [`questions.$.${key}`, value]));
+    const updated = await InterviewSession.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user._id, questions: { $elemMatch: { qid: data.qid, answeredAt: null } } },
+      { $set: set },
+      { returnDocument: "after", runValidators: true },
+    ).lean();
+    if (!updated) return res.status(409).json({ error: "This question is already answered" });
+    const answered = updated.questions.filter((item) => item.answeredAt);
+    const saved = await InterviewSession.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user._id },
+      { $set: {
+        overallScore: interview.mean(answered.map((item) => item.overall)),
+        status: answered.length === updated.questions.length ? "completed" : "active",
+      } },
+      { returnDocument: "after", runValidators: true },
+    ).lean();
+    res.json(saved);
+  } catch {
+    res.status(500).json({ error: "Could not save answer" });
   }
 });
 

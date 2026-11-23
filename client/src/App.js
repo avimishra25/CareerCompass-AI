@@ -13,6 +13,7 @@ import Dashboard    from "./pages/Dashboard";
 import JDMatch      from "./pages/JDMatch";
 import Roadmap      from "./pages/Roadmap";
 import ResumeBuilder from "./pages/ResumeBuilder";
+import InterviewPrep from "./pages/InterviewPrep";
 import Profile      from "./pages/Profile";
 import OAuthSuccess from "./pages/OAuthSuccess";
 
@@ -162,6 +163,7 @@ function AppInner() {
       {currentPage === "jd-match" && <JDMatch onNavigate={navigate} />}
       {currentPage === "roadmap" && <Roadmap onNavigate={navigate} />}
       {currentPage === "resume-builder" && <ResumeBuilder onNavigate={navigate} />}
+      {currentPage === "interview" && <InterviewPrep onNavigate={navigate} />}
       {currentPage === "compare" &&
         <Compare
           analysisA={compareData.analysisA}
