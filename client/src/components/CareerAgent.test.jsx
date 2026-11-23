@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axios from "axios";
 import CareerAgent from "./CareerAgent";
 
@@ -80,13 +80,20 @@ test("shows a safe provider error inline and never sends it back as an assistant
   expect(turns).toEqual([{ role: "user", content: "Help me" }]);
 });
 
-test("model replies are escaped before formatting; Esc and the close button call onClose", async () => {
-  axios.post.mockResolvedValue({ data: { reply: "**Bold** <img src=x onerror=alert(1)>" } });
+test("replies render markdown as elements, never HTML; Esc and the close button call onClose", async () => {
+  const reply = ["**Bold** <img src=x onerror=alert(1)>", "", "* First tip", "* Second **tip**", "", "1. Learn SQL", "2. Build a project"].join("\n");
+  axios.post.mockResolvedValue({ data: { reply } });
   const onClose = jest.fn();
   const { container } = render(<CareerAgent open onClose={onClose} />);
   fireEvent.change(screen.getByRole("textbox"), { target: { value: "Hi" } });
   fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
-  expect(await screen.findByText("Bold")).toContainHTML("<strong>Bold</strong>");
+  expect((await screen.findByText("Bold")).tagName).toBe("STRONG");
+  const lists = screen.getAllByRole("list");
+  expect(lists.map((list) => list.tagName)).toEqual(["UL", "OL"]);
+  expect(within(lists[0]).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["First tip", "Second tip"]);
+  expect(within(lists[1]).getAllByRole("listitem")).toHaveLength(2);
+  // No raw asterisks reach the screen.
+  expect(screen.getByRole("complementary", { name: "Career coach" }).textContent).not.toContain("*");
   expect(container.querySelector("img")).toBeNull();
   expect(screen.getByText(/<img src=x/)).toBeInTheDocument();
   fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });

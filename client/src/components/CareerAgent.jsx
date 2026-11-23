@@ -4,20 +4,9 @@ import { Send, X } from "lucide-react";
 import { Badge, Button, InlineAlert, cx } from "./ui";
 import { roleLabel } from "../constants/targetRoles";
 import { formatSkill } from "../utils/format";
+import Markdown from "./coach/Markdown";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
-
-// Escape first, then apply a little markdown (bold, italics, numbered lists, line breaks).
-// Model output is never inserted as raw HTML.
-const escapeHtml = (text) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-function renderMarkdown(text) {
-  if (!text) return "";
-  return escapeHtml(text)
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/^(\d+)\.\s/gm, "<span class='font-medium text-brand'>$1.</span> ")
-    .replace(/\n/g, "<br/>");
-}
 
 const SUGGESTIONS = [
   "What is my biggest skill gap?",
@@ -30,11 +19,11 @@ function Message({ role, content }) {
   const isUser = role === "user";
   return (
     <div className={cx("flex", isUser ? "justify-end" : "justify-start")}>
-      <div
-        className={cx("max-w-[85%] rounded-card px-3 py-2 text-sm leading-5",
-          isUser ? "bg-brand text-white" : "border border-line bg-page text-ink")}
-        dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
-      />
+      <div className={cx("max-w-[85%] rounded-card px-3 py-2 text-sm leading-5",
+        isUser ? "bg-brand text-white" : "border border-line bg-page text-ink")}>
+        {/* User text is shown as typed; replies render a safe Markdown subset (no HTML). */}
+        {isUser ? <p className="whitespace-pre-wrap">{content}</p> : <Markdown text={content} />}
+      </div>
     </div>
   );
 }
