@@ -107,12 +107,12 @@ Test layout gotchas:
 
 ## UI conventions
 
-**Design system** (rationale and audit: `docs/redesign/PLAN.md`)
+**Design system** (the tokens in `client/src/index.css` and `client/tailwind.config.js` are the source of truth)
 - **Tokens:** defined in `client/src/index.css` (`:root`) and mirrored in `client/tailwind.config.js`.
   - Surfaces: page `#F7F8FA` (`bg-page`), white cards (`bg-surface`), 1px `#E4E7EC` borders (`border-line`), 10px radius (`rounded-card`), `shadow-card`.
   - One brand colour, teal: `brand` `#0F766E`, hover `#115E59`, tint `#F0FDFA`. Text greys are `ink` `#101828`, `ink-secondary` `#344054` and `ink-muted` `#667085`; nothing lighter is used for text.
   - Semantic colours only for meaning: `success`, `warning` and `danger`, each with a `-tint`.
-  - Every text/background pair meets WCAG AA; check new pairs with `docs/redesign/tools/contrast.mjs`.
+  - Every text/background pair meets WCAG AA; check new pairs by computing the contrast ratio (at least 4.5:1 for text).
 - **Type:** Inter, self-hosted through `@fontsource/inter` (400/500/600) and imported in `index.js`.
   - The Tailwind scale is limited to `text-xs` 12 / `sm` 14 / `base` 16 / `lg` 20 / `xl` 24 / `2xl` 30, with weights `normal`/`medium`/`semibold`.
   - Use `.tabular` for scores. Uppercase is for table headers only.
@@ -130,7 +130,7 @@ Test layout gotchas:
 - **Two layout traps** (both were real bugs):
   - A `hidden` attribute is overridden by a display utility such as `flex`, so set the display class from the same state.
   - An `sr-only` element inside a horizontally scrolling container needs a `relative` container, or it widens the whole page.
-- **Visual check:** `docs/redesign/tools/capture.mjs` screenshots every page from the production build with mocked API data and flags horizontal scroll and overflowing text.
+- **Visual check:** build the client and check each page at 1440, 1024, 768 and 390px for horizontal scroll and overflowing text.
 
 **Navigation is state-based, not router-based**
 - `App.js` (`AppInner`) holds `currentPage` in `useState` and renders the page with `{currentPage === "x" && <X onNavigate={navigate} />}`. `navigate(page, data)` sets the page and scrolls to top. `compare` receives its data through `compareData`. Every other `data` object goes into `pageData`, which each navigation replaces, and is passed as a one-shot `preset`. Examples: `{ analysisId, targetRole }` or `{ analysisId, jdMatchId }` for Roadmap; `{ analysisId, role }` or `{ jdMatchId, jdTitle }` for Interview; `{ file }` as UploadResume's `presetFile`. Pages read it once through a ref and only pre-select; they never auto-run AI calls.

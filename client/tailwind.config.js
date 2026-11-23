@@ -1,4 +1,4 @@
-// Design tokens (see src/index.css and docs/redesign/PLAN.md). The type scale and weights replace
+// Design tokens (see src/index.css). The type scale and weights replace
 // Tailwind's defaults so only approved values can be used.
 
 module.exports = {

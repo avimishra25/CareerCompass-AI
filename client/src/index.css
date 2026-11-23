@@ -4,7 +4,7 @@
 
 /* ── Design tokens ─────────────────────────────────────────────
    One brand colour (compass teal), one grey scale, semantic colours only for meaning.
-   Every text/background pair used below meets WCAG AA (docs/redesign/tools/contrast.mjs). */
+   Every text/background pair used below meets WCAG AA. */
 :root {
   --page: #f7f8fa;
   --surface: #ffffff;

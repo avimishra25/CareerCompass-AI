@@ -788,22 +788,22 @@ Retrain when you change `extract_features()`, update training data tiers, or add
 Captured from the production build with sample data (a fictional user, "Rahul Verma").
 
 ### Dashboard
-![Dashboard](docs/screenshots/dashboard.png)
+![Dashboard](screenshots/dashboard.png)
 
 ### Resume analysis
-![Resume analysis](docs/screenshots/resume-analysis.png)
+![Resume analysis](screenshots/resume-analysis.png)
 
 ### JD match
-![JD match](docs/screenshots/jd-match.png)
+![JD match](screenshots/jd-match.png)
 
 ### Career roadmap
-![Career roadmap](docs/screenshots/roadmap.png)
+![Career roadmap](screenshots/roadmap.png)
 
 ### AI resume builder
-![AI resume builder](docs/screenshots/resume-builder.png)
+![AI resume builder](screenshots/resume-builder.png)
 
 ### Interview prep feedback
-![Interview prep feedback](docs/screenshots/interview-feedback.png)
+![Interview prep feedback](screenshots/interview-feedback.png)
 
 ---
 
