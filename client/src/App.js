@@ -14,6 +14,8 @@ import ResumeBuilder from "./pages/ResumeBuilder";
 import InterviewPrep from "./pages/InterviewPrep";
 import Profile      from "./pages/Profile";
 import OAuthSuccess from "./pages/OAuthSuccess";
+import FullPageStatus from "./components/FullPageStatus";
+import { Button } from "./components/ui";
 
 function AppInner() {
   const { user, loading, logout } = useAuth();
@@ -50,36 +52,17 @@ function AppInner() {
     }
   }, [user]); // eslint-disable-line
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div style={{
-          width: 40, height: 40, borderRadius: "50%",
-          border: "3px solid rgba(59,110,248,0.2)",
-          borderTopColor: "#3b6ef8",
-          animation: "spin 0.8s linear infinite",
-        }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
-  }
+  if (loading) return <FullPageStatus message="Loading CareerCompass AI…" />;
 
-  // Google OAuth callback — reads token from URL, logs in, redirects to dashboard
+  // Google OAuth callback: reads the token from the URL, logs in, then goes to the dashboard.
   if (currentPage === "oauth-success") {
     return <OAuthSuccess onNavigate={navigate} />;
   }
 
-  // Auth error fallback
   if (currentPage === "auth-error") {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <p style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-          Sign-in failed. Please try again.
-        </p>
-        <button onClick={() => setCurrentPage("home")} className="btn-primary px-6 py-2 rounded-xl text-sm">
-          Go back
-        </button>
-      </div>
+      <FullPageStatus busy={false} message="Sign-in failed. Try again."
+        action={<Button variant="primary" onClick={() => setCurrentPage("home")}>Back to sign in</Button>} />
     );
   }
 

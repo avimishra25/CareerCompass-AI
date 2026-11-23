@@ -36,19 +36,6 @@
 
   --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-serif-document: "Times New Roman", Times, Georgia, serif; /* resume preview only (matches the PDF) */
-
-  /* Legacy names still read by pages that are not yet refactored; removed in the cleanup commit. */
-  --bg: var(--page);
-  --text-2: var(--text-secondary);
-  --text-3: var(--text-muted);
-  --blue: var(--brand);
-  --indigo: var(--brand);
-  --teal: var(--brand);
-  --rose: var(--danger);
-  --border-subtle: var(--border);
-  --shadow-sm: var(--shadow);
-  --shadow-md: var(--shadow);
-  --shadow-lg: var(--shadow-overlay);
 }
 
 @layer base {
@@ -87,46 +74,3 @@
     scroll-behavior: auto !important;
   }
 }
-
-/* ── Legacy helpers ────────────────────────────────────────────
-   Temporary: map the old class names onto the new look so screens that are not yet
-   refactored stay usable. Each page commit stops using them; the cleanup commit deletes them. */
-.glass, .glass-dark {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
-  color: var(--text);
-}
-.gradient-text, .gradient-text-warm { color: var(--text); }
-.btn-primary {
-  background: var(--brand);
-  color: #fff;
-  font-weight: 500;
-  transition: background-color 150ms ease;
-}
-.btn-primary:hover { background: var(--brand-hover); }
-.btn-ghost {
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  color: var(--text-secondary);
-  font-weight: 500;
-  transition: background-color 150ms ease;
-}
-.btn-ghost:hover { background: var(--hover); }
-.input-glass {
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  color: var(--text);
-}
-.input-glass:focus { border-color: var(--brand); }
-.skill-pill {
-  background: var(--hover);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-}
-.progress-track { background: var(--track); border-radius: 999px; height: 6px; overflow: hidden; }
-.progress-fill { height: 100%; border-radius: 999px; background: var(--brand); transition: width 150ms ease; }

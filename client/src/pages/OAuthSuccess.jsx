@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import FullPageStatus from "../components/FullPageStatus";
+import { Button } from "../components/ui";
 
 export default function OAuthSuccess({ onNavigate }) {
   const { loginWithToken } = useAuth();
-  const [status, setStatus] = useState("Signing you in…");
+  const [failure, setFailure] = useState("");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token  = params.get("token");
+    const token = params.get("token");
 
     if (token) {
       loginWithToken(token)
@@ -15,24 +17,17 @@ export default function OAuthSuccess({ onNavigate }) {
           window.history.replaceState({}, document.title, "/");
           onNavigate("dashboard");
         })
-        .catch(() => setStatus("Sign-in failed. Please try again."));
+        .catch(() => setFailure("Sign-in failed. Try again."));
     } else {
-      setStatus("No token found. Please try again.");
+      setFailure("Sign-in did not complete. Try again.");
     }
   }, []); // eslint-disable-line
 
-  return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-      <div style={{
-        width: 40, height: 40, borderRadius: "50%",
-        border: "3px solid rgba(59,110,248,0.2)",
-        borderTopColor: "#3b6ef8",
-        animation: "spin 0.8s linear infinite",
-      }} />
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      <p style={{ color: "var(--text-2)", fontFamily: "Plus Jakarta Sans, sans-serif", fontSize: "0.9rem" }}>
-        {status}
-      </p>
-    </div>
-  );
+  if (failure) {
+    return (
+      <FullPageStatus busy={false} message={failure}
+        action={<Button variant="primary" onClick={() => { window.history.replaceState({}, document.title, "/"); onNavigate("home"); }}>Back to sign in</Button>} />
+    );
+  }
+  return <FullPageStatus message="Signing you in…" />;
 }

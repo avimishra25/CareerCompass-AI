@@ -1,6 +1,5 @@
 // Design tokens (see src/index.css and docs/redesign/PLAN.md). The type scale and weights replace
 // Tailwind's defaults so only approved values can be used.
-const legacyTypeAliases = { "3xl": "30px", "4xl": "30px", "5xl": "30px" }; // removed in the cleanup commit
 
 module.exports = {
   content: ["./src/**/*.{js,jsx}"],
@@ -12,15 +11,11 @@ module.exports = {
       lg: ["20px", { lineHeight: "28px" }],
       xl: ["24px", { lineHeight: "32px" }],
       "2xl": ["30px", { lineHeight: "38px" }],
-      ...Object.fromEntries(Object.entries(legacyTypeAliases).map(([key, size]) => [key, [size, { lineHeight: "38px" }]])),
     },
     fontWeight: {
       normal: "400",
       medium: "500",
       semibold: "600",
-      // Legacy aliases, removed in the cleanup commit.
-      bold: "600",
-      extrabold: "600",
     },
     extend: {
       fontFamily: {

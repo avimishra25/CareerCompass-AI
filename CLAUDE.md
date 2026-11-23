@@ -107,13 +107,30 @@ Test layout gotchas:
 
 ## UI conventions
 
-**Design system: `client/src/index.css`** (Tailwind base/components/utilities plus these hand-written classes)
-- CSS variables in `:root`: `--bg`, `--surface`, `--border`, `--text`, `--text-2`, `--text-3`, `--blue` (#3b6ef8), `--indigo` (#6c63ff), `--teal`, `--rose`, and `--shadow-sm/md/lg`. Prefer `var(--text)` and `var(--text-2)` over hard-coded greys. Body font is Plus Jakarta Sans, with Instrument Serif used for accent words.
-- `.glass` is the standard card (frosted surface, hover lift). `.glass-dark` is the dark variant.
-- `.btn-primary` is the blue/indigo gradient action button. `.btn-ghost` is the secondary button. `.input-glass` is the text input.
-- `.skill-pill` is the blue chip for skills (matched, missing and extra skill chips on the JD Match page build on it). `.progress-track` + `.progress-fill` make a progress bar. Set the fill's `width` as a percentage.
-- `.gradient-text` and `.gradient-text-warm` are for headings. `.fade-up` and `.fade-up-1` to `.fade-up-4` are entrance animations.
-- Pages mix Tailwind utility classes (layout, spacing, rounding) with inline `style` using the CSS variables and `fontFamily: "Plus Jakarta Sans, sans-serif"`. Match that. Don't introduce another styling approach or UI library.
+**Design system** (rationale and audit: `docs/redesign/PLAN.md`)
+- **Tokens:** defined in `client/src/index.css` (`:root`) and mirrored in `client/tailwind.config.js`.
+  - Surfaces: page `#F7F8FA` (`bg-page`), white cards (`bg-surface`), 1px `#E4E7EC` borders (`border-line`), 10px radius (`rounded-card`), `shadow-card`.
+  - One brand colour, teal: `brand` `#0F766E`, hover `#115E59`, tint `#F0FDFA`. Text greys are `ink` `#101828`, `ink-secondary` `#344054` and `ink-muted` `#667085`; nothing lighter is used for text.
+  - Semantic colours only for meaning: `success`, `warning` and `danger`, each with a `-tint`.
+  - Every text/background pair meets WCAG AA; check new pairs with `docs/redesign/tools/contrast.mjs`.
+- **Type:** Inter, self-hosted through `@fontsource/inter` (400/500/600) and imported in `index.js`.
+  - The Tailwind scale is limited to `text-xs` 12 / `sm` 14 / `base` 16 / `lg` 20 / `xl` 24 / `2xl` 30, with weights `normal`/`medium`/`semibold`.
+  - Use `.tabular` for scores. Uppercase is for table headers only.
+  - Serif appears only inside the resume preview (`--font-serif-document`), because it mirrors the PDF.
+- **Icons:** lucide-react through `components/ui/Icon` (16px, or 20px in navigation; stroke 1.75). Never use emoji as icons. Role icons and labels come from `constants/targetRoles.js` (`ROLES`, `roleLabel`, `roleIcon`).
+- **Components:** use `components/ui` instead of one-off styles. It provides:
+  - `Button` (primary, secondary, ghost, danger; sm or md), `Card`, `Badge`, `PageHeader`
+  - `ScoreRing` (warning below 50%, success at 75%+), `ProgressBar`, `Tabs`/`TabPanel`
+  - `Input`, `Select`, `Textarea` (code-point counter), `Tooltip`
+  - `EmptyState`, `Skeleton`, `LoadingState` (adds the cold-server notice after 8 s), `InlineAlert`
+  - Display helpers live in `utils/format.js` (`formatSkill`, dates) and `utils/skillGroups.js`.
+- **Page rules:** every page has a `PageHeader` and at most one primary button. Use `LoadingState` while loading, `EmptyState` (icon, one sentence, one action) when there is nothing to show, and `InlineAlert` for errors; never `alert()`.
+  - Copy is short, plain and in sentence case, without exclamation marks. Button labels start with a verb.
+  - Motion is limited to 150ms colour transitions, and `prefers-reduced-motion` is respected.
+- **Two layout traps** (both were real bugs):
+  - A `hidden` attribute is overridden by a display utility such as `flex`, so set the display class from the same state.
+  - An `sr-only` element inside a horizontally scrolling container needs a `relative` container, or it widens the whole page.
+- **Visual check:** `docs/redesign/tools/capture.mjs` screenshots every page from the production build with mocked API data and flags horizontal scroll and overflowing text.
 
 **Navigation is state-based, not router-based**
 - `App.js` (`AppInner`) holds `currentPage` in `useState` and renders the page with `{currentPage === "x" && <X onNavigate={navigate} />}`. `navigate(page, data)` sets the page and scrolls to top. `compare` receives its data through `compareData`. Every other `data` object goes into `pageData`, which each navigation replaces, and is passed as a one-shot `preset`. Examples: `{ analysisId, targetRole }` or `{ analysisId, jdMatchId }` for Roadmap; `{ analysisId, role }` or `{ jdMatchId, jdTitle }` for Interview; `{ file }` as UploadResume's `presetFile`. Pages read it once through a ref and only pre-select; they never auto-run AI calls.
@@ -129,11 +146,11 @@ Test layout gotchas:
 
 ## Planned modules
 
-Not built yet. Each needs its own phase, so don't start one unless asked. They should reuse the conventions above: `protect`, per-user scoped queries and rate limits, strict body validation, sanitised errors, `llm.generate` for any LLM step with schema-validated JSON, a state-navigated page and a Navbar link. Static reference designs live in `docs/ui-reference/`. They are standalone HTML with their own inline CSS, so port the layout into React using the `index.css` classes (`glass`, `btn-primary`, `btn-ghost`, `skill-pill`, `progress-*`) rather than copying the inline styles or class names.
+Not built yet. Each needs its own phase, so don't start one unless asked. They should reuse the conventions above: `protect`, per-user scoped queries and rate limits, strict body validation, sanitised errors, `llm.generate` for any LLM step with schema-validated JSON, a state-navigated page and a sidebar entry in `components/shell/navigation.js`. The static designs in `docs/ui-reference/` predate the redesign, so take only the layout ideas from them and build with `components/ui` and the design tokens above.
 
 | Module | Reference design | Notes |
 |---|---|---|
 | Career Roadmap | `docs/ui-reference/roadmap.html` | **Built.** `ml-service/roadmap.py` + Flask `/roadmap`, `server/models/CareerRoadmap.js` + `/api/roadmap*` routes, `client/src/pages/Roadmap.jsx`. Use it as the template for the other modules. |
 | AI Resume Builder | `docs/ui-reference/builder.html` | **Built.** `ml-service/resume_builder.py` + Flask `/resume/enhance` and `/resume/score`, `server/lib/resumeBuilder.js` (shared draft limits/validation) + `server/models/ResumeDraft.js` + `/api/resume-builder/*`, `client/src/pages/ResumeBuilder.jsx` with `client/src/utils/resumeDraft.js` and `resumePdf.js`. |
-| Job & Internship Recommendations | `docs/ui-reference/jobs.html` | Matching listings to the user's analyzed skills. |
+| Job & Internship Recommendations | `docs/ui-reference/jobs.html` | **Will not be built** (decided during the 2026-11 redesign). Keep it out of the sidebar, KPIs and copy. |
 | Interview Prep with AI Feedback | `docs/ui-reference/interview.html` | **Built.** `ml-service/interview.py` + Flask `/interview/questions` and `/interview/evaluate`, `server/lib/interview.js` (shared limits, project-title extraction, feedback validation) + `server/models/InterviewSession.js` + `/api/interview/*`, `client/src/pages/InterviewPrep.jsx`. The overall score is recomputed from the rubric in Flask and Node; never trust the model's. |
