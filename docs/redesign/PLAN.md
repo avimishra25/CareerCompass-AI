@@ -1,6 +1,6 @@
 # CareerCompass AI frontend redesign: audit and plan
 
-Status: **Approved.** Decisions are recorded in the next section; they override anything later in this file
+Status: **Done** (see `docs/redesign/CHANGES.md`). Approved Decisions are recorded in the next section; they override anything later in this file
 that conflicts with them.
 
 ## Decisions (approved)
