@@ -785,26 +785,25 @@ Retrain when you change `extract_features()`, update training data tiers, or add
 
 ## 📸 Screenshots
 
-<img width="1545" height="905" alt="image" src="https://github.com/user-attachments/assets/d20a83a6-2a31-4dbb-ac77-5c42676fba61" />
-<img width="1528" height="887" alt="image" src="https://github.com/user-attachments/assets/a4fd784d-7201-4b9a-82f8-08f63f905a17" />
-<img width="1492" height="872" alt="image" src="https://github.com/user-attachments/assets/f4d07baa-d6b5-4808-a129-adaf52e8a0e0" />
-<img width="1525" height="915" alt="image" src="https://github.com/user-attachments/assets/d1f1a3ae-111a-4147-883d-54baebb9162a" />
-<img width="1692" height="917" alt="image" src="https://github.com/user-attachments/assets/869b23d4-c628-41c2-bf54-89d53ea6ffe2" />
-<img width="1681" height="911" alt="image" src="https://github.com/user-attachments/assets/27e25876-517e-49fa-b7b0-2eadecdd4594" />
-<img width="1691" height="905" alt="image" src="https://github.com/user-attachments/assets/2262a5f2-a50c-4d21-bb03-26b3d9dae253" />
-<img width="1516" height="925" alt="image" src="https://github.com/user-attachments/assets/9a3f749c-ef26-477a-b9cc-255e75eb207f" />
+Captured from the production build with sample data (a fictional user, "Rahul Verma").
 
-### Career Roadmap
-<!-- Screenshot placeholder: add the Roadmap page (milestone timeline and summary cards). -->
-_Screenshot to be added._
+### Dashboard
+![Dashboard](docs/screenshots/dashboard.png)
 
-### AI Resume Builder
-<!-- Screenshot placeholder: add the Resume Builder (editor, AI suggestion card, live ATS score, preview). -->
-_Screenshot to be added._
+### Resume analysis
+![Resume analysis](docs/screenshots/resume-analysis.png)
 
-### Interview Prep
-<!-- Screenshot placeholder: add Interview Prep (question list, answer box, feedback panel with rubric bars). -->
-_Screenshot to be added._
+### JD match
+![JD match](docs/screenshots/jd-match.png)
+
+### Career roadmap
+![Career roadmap](docs/screenshots/roadmap.png)
+
+### AI resume builder
+![AI resume builder](docs/screenshots/resume-builder.png)
+
+### Interview prep feedback
+![Interview prep feedback](docs/screenshots/interview-feedback.png)
 
 ---
 
