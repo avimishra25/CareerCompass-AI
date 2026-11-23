@@ -402,16 +402,22 @@ const skillList = (items, limit) => (Array.isArray(items) ? [...items] : [])
   .slice(0, limit);
 const boundedText = (value, limit) => typeof value === "string" && value.trim() && [...value].length <= limit;
 
+// Mirrors ml-service/roadmap.py: at most 2 weeks per gap, specific subtopic titles, no title used more than twice.
 const validRoadmapResult = (data) => {
   if (!data || typeof data !== "object" || typeof data.covered !== "boolean" ||
       !Array.isArray(data.skill_gaps) || data.skill_gaps.length > 100 ||
       data.skill_gaps.some((skill) => !boundedText(skill, 60)) || !Array.isArray(data.milestones)) return false;
   if (data.covered) return data.milestones.length === 0;
-  return data.milestones.length >= 4 && data.milestones.length <= 12 && data.milestones.every((item, index) =>
+  const { milestones } = data;
+  if (milestones.length < 1 || milestones.length > Math.min(12, 2 * data.skill_gaps.length)) return false;
+  const valid = milestones.every((item, index) =>
     item && typeof item === "object" && item.week === index + 1 && data.skill_gaps.includes(item.skill) &&
-    boundedText(item.objective, 500) && boundedText(item.mini_project, 300) &&
+    boundedText(item.title, 120) && boundedText(item.objective, 500) && boundedText(item.mini_project, 300) &&
     Array.isArray(item.resources) && item.resources.length >= 2 && item.resources.length <= 3 &&
     item.resources.every((resource) => boundedText(resource, 200)));
+  if (!valid) return false;
+  const mostRepeated = (keyOf) => Math.max(...milestones.reduce((map, item) => map.set(keyOf(item), (map.get(keyOf(item)) || 0) + 1), new Map()).values());
+  return mostRepeated((item) => item.skill) <= 2 && mostRepeated((item) => item.title.toLowerCase()) <= 2;
 };
 
 app.post("/api/roadmap", protect, roadmapLimit, async (req, res) => {
@@ -462,8 +468,8 @@ app.post("/api/roadmap", protect, roadmapLimit, async (req, res) => {
     const roadmap = await CareerRoadmap.create({
       userId: req.user._id, analysisId: analysis._id, jdMatchId: jdMatch?._id || null, targetRole,
       hoursPerWeek: data.hoursPerWeek, skillGaps: result.skill_gaps, covered: result.covered,
-      milestones: result.milestones.map(({ week, skill, objective, resources, mini_project }) => ({
-        week, skill, objective, resources, miniProject: mini_project,
+      milestones: result.milestones.map(({ week, skill, title, objective, resources, mini_project }) => ({
+        week, skill, title, objective, resources, miniProject: mini_project,
       })),
     });
     res.status(201).json(roadmap);

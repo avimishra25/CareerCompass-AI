@@ -4,6 +4,7 @@ Kept separate from app.py so it can be unit tested without loading spaCy or the 
 """
 import json
 import re
+from collections import Counter
 
 MAX_ROLE_CHARS = 100
 MAX_SKILL_CHARS = 60
@@ -13,6 +14,9 @@ LIST_LIMITS = {"missing_skills": 50, "jd_gaps": 50, "known_skills": 300}
 MAX_OBJECTIVE_CHARS = 500
 MAX_RESOURCE_CHARS = 200
 MAX_PROJECT_IDEA_CHARS = 300
+MAX_TITLE_CHARS = 120
+# A skill gets at most this many weeks, so a plan is at most 2 weeks per distinct gap.
+MAX_WEEKS_PER_SKILL = 2
 ROADMAP_INVALID_MESSAGE = "AI returned an invalid roadmap. Try again."
 
 # prerequisite -> skills that build on it. Names use extract_skills' canonical spelling.
@@ -144,11 +148,13 @@ Return only a JSON object: {{"milestones": [...]}} with exactly {weeks} items, o
 Each item has exactly these keys:
 - "week": integer week number
 - "skill": copied exactly from ordered_skill_gaps
+- "title": "<Skill>: <specific subtopic>", for example "REST API: routing and status codes"; at most 120 characters
 - "objective": what to learn and practise that week, at most 300 characters
 - "resources": 2 or 3 free learning resources (official docs, free courses or tutorials), each a short name, no paid courses
 - "mini_project": one small hands-on task, at most 200 characters
 Follow ordered_skill_gaps in order; earlier skills are prerequisites for later ones.
-If there are fewer skills than weeks, spend consecutive weeks on a skill with progressively harder objectives.
+Spend at most {MAX_WEEKS_PER_SKILL} weeks on any skill. When a skill gets 2 weeks, the two titles must name different
+subtopics (fundamentals first, then applied practice); never repeat a title.
 If there are more skills than weeks, cover the first {weeks} skills.
 Fit each week's work into hours_per_week.
 When existing_projects describes the student's projects, make the mini_project extend one of them by name;
@@ -180,23 +186,33 @@ def validate_milestones(raw, gaps, weeks):
     gap_index = {skill: index for index, skill in enumerate(gaps)}
     milestones = []
     for item in items:
-        if not isinstance(item, dict) or not {"week", "skill", "objective", "resources", "mini_project"} <= set(item):
+        if not isinstance(item, dict) or not {"week", "skill", "title", "objective", "resources", "mini_project"} <= set(item):
             raise RoadmapOutputError("Milestone is missing keys")
         week, skill, resources = item["week"], item["skill"], item["resources"]
         if type(week) is not int or not 1 <= week <= weeks:
             raise RoadmapOutputError("Invalid week")
         if not isinstance(skill, str) or _canonical(skill) not in gap_index:
             raise RoadmapOutputError("Skill is not in the gap list")
+        if not _nonblank(item["title"], MAX_TITLE_CHARS):
+            raise RoadmapOutputError("Invalid title")
+        if isinstance(skill, str) and _canonical(item["title"]).rstrip(":") == _canonical(skill):
+            raise RoadmapOutputError("Title needs a specific subtopic")
         if not _nonblank(item["objective"], MAX_OBJECTIVE_CHARS) or not _nonblank(item["mini_project"], MAX_PROJECT_IDEA_CHARS):
             raise RoadmapOutputError("Invalid objective or mini project")
         if (not isinstance(resources, list) or not 2 <= len(resources) <= 3
                 or any(not _nonblank(resource, MAX_RESOURCE_CHARS) for resource in resources)):
             raise RoadmapOutputError("Invalid resources")
-        milestones.append({"week": week, "skill": _canonical(skill), "objective": item["objective"].strip(),
+        milestones.append({"week": week, "skill": _canonical(skill), "title": re.sub(r"\s+", " ", item["title"].strip()),
+                           "objective": item["objective"].strip(),
                            "resources": [resource.strip() for resource in resources],
                            "mini_project": item["mini_project"].strip()})
     if sorted(item["week"] for item in milestones) != list(range(1, weeks + 1)):
         raise RoadmapOutputError("Weeks must be 1..N, each once")
+    if max(Counter(item["skill"] for item in milestones).values()) > MAX_WEEKS_PER_SKILL:
+        raise RoadmapOutputError("Too many weeks on one skill")
+    # Repeated generic titles ("rest api" six times) mean the model did not plan subtopics.
+    if max(Counter(item["title"].lower() for item in milestones).values()) > 2:
+        raise RoadmapOutputError("Milestone titles repeat")
     # Enforce prerequisite order deterministically instead of trusting the model's sequencing.
     milestones.sort(key=lambda item: (gap_index[item["skill"]], item["week"]))
     for number, item in enumerate(milestones, start=1):
@@ -214,11 +230,13 @@ def generate_roadmap(payload, generate):
     if not gaps:
         return {"covered": True, "message": f"You already cover the core skills for {payload['target_role']}.",
                 "skill_gaps": [], "milestones": []}
-    system_prompt, messages = build_system_prompt(payload["weeks"]), build_messages(payload, gaps)
+    # One gap gives a 2-week plan, not 6 weeks of the same topic.
+    weeks = min(payload["weeks"], MAX_WEEKS_PER_SKILL * len(gaps))
+    system_prompt, messages = build_system_prompt(weeks), build_messages({**payload, "weeks": weeks}, gaps)
     for _ in range(2):
         raw = generate(system_prompt, messages, json_mode=True, max_output_tokens=4096)
         try:
-            milestones = validate_milestones(raw, gaps, payload["weeks"])
+            milestones = validate_milestones(raw, gaps, weeks)
         except RoadmapOutputError:
             continue
         return {"covered": False, "message": "", "skill_gaps": gaps, "milestones": milestones}

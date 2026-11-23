@@ -21,7 +21,8 @@ from roadmap import (RoadmapOutputError, extract_projects, generate_roadmap, mer
 
 def milestones_json(gaps, weeks=None, **overrides):
     weeks = weeks or len(gaps)
-    items = [{"week": i + 1, "skill": gaps[i % len(gaps)], "objective": f"Learn {gaps[i % len(gaps)]}",
+    items = [{"week": i + 1, "skill": gaps[i % len(gaps)], "title": f"{gaps[i % len(gaps)]}: part {i + 1}",
+              "objective": f"Learn {gaps[i % len(gaps)]}",
               "resources": ["Official docs", "Free tutorial"], "mini_project": "Extend Expense Tracker"}
              for i in range(weeks)]
     for key, value in overrides.items():
@@ -76,7 +77,7 @@ class ValidationTests(unittest.TestCase):
         result = validate_milestones(json.dumps(items), self.gaps, 4)
         self.assertEqual([m["week"] for m in result], [1, 2, 3, 4])
         self.assertEqual([m["skill"] for m in result], ["javascript", "javascript", "react", "docker"])
-        self.assertEqual(set(result[0]), {"week", "skill", "objective", "resources", "mini_project"})
+        self.assertEqual(set(result[0]), {"week", "skill", "title", "objective", "resources", "mini_project"})
 
     def test_invalid_responses_rejected(self):
         good = json.loads(milestones_json(self.gaps))
@@ -91,7 +92,9 @@ class ValidationTests(unittest.TestCase):
                  milestones_json(self.gaps, skill=3), milestones_json(self.gaps, objective=" "),
                  milestones_json(self.gaps, objective="x" * 501), milestones_json(self.gaps, mini_project=None),
                  milestones_json(self.gaps, resources=["one"]), milestones_json(self.gaps, resources=["a", "b", "c", "d"]),
-                 milestones_json(self.gaps, resources=["a", 2]), milestones_json(self.gaps, resources="docs")]
+                 milestones_json(self.gaps, resources=["a", 2]), milestones_json(self.gaps, resources="docs"),
+                 milestones_json(self.gaps, title=" "), milestones_json(self.gaps, title="x" * 121),
+                 milestones_json(self.gaps, title="JavaScript"), milestones_json(self.gaps, title=None)]
         for raw in cases:
             with self.subTest(raw=raw[:80]):
                 with self.assertRaises(RoadmapOutputError):
@@ -114,6 +117,54 @@ class ValidationTests(unittest.TestCase):
             self.assertEqual(caught.exception.status, 413)
         self.assertEqual(parse_roadmap_request(payload())["weeks"], 6)
         self.assertEqual(parse_roadmap_request(payload(weeks=12, hours_per_week=40))["weeks"], 12)
+
+
+class SubtopicTests(unittest.TestCase):
+    gaps = ["javascript", "react", "docker"]
+
+    def test_titles_and_weeks_per_skill_are_enforced(self):
+        items = json.loads(milestones_json(self.gaps, 6))["milestones"]
+        # Three milestones sharing one title means the model did not plan subtopics.
+        for item in items[:3]:
+            item["title"] = "Learn the basics"
+        with self.assertRaises(RoadmapOutputError):
+            validate_milestones(json.dumps(items), self.gaps, 6)
+        # Two may share a title (the rule is "more than 2").
+        items = json.loads(milestones_json(self.gaps, 6))["milestones"]
+        items[0]["title"] = items[1]["title"] = "Learn the basics"
+        self.assertEqual(len(validate_milestones(json.dumps(items), self.gaps, 6)), 6)
+        # No skill gets more than 2 weeks.
+        items = json.loads(milestones_json(self.gaps, 6))["milestones"]
+        for item in items[:3]:
+            item["skill"] = "docker"
+        with self.assertRaises(RoadmapOutputError):
+            validate_milestones(json.dumps(items), self.gaps, 6)
+
+    def test_one_gap_gives_at_most_two_weeks_with_distinct_subtopics(self):
+        one_gap = payload(missing_skills=["rest api"], jd_gaps=[], known_skills=[])
+        plan = {"milestones": [
+            {"week": 1, "skill": "rest api", "title": "REST API: routing and status codes", "objective": "Routes",
+             "resources": ["MDN", "freeCodeCamp"], "mini_project": "Add routes"},
+            {"week": 2, "skill": "rest api", "title": "REST API: validation and error handling", "objective": "Errors",
+             "resources": ["MDN", "Express docs"], "mini_project": "Add validation"},
+        ]}
+        fake = Mock(return_value=json.dumps(plan))
+        result = generate_roadmap(parse_roadmap_request(one_gap), fake)
+        self.assertIn("exactly 2 items", fake.call_args.args[0])
+        self.assertEqual(json.loads(fake.call_args.args[1][0]["content"])["weeks"], 2)
+        self.assertEqual([m["title"] for m in result["milestones"]],
+                         ["REST API: routing and status codes", "REST API: validation and error handling"])
+        # Six weeks titled "rest api" (the production failure) is rejected twice, then reported as invalid.
+        repeated = {"milestones": [{**plan["milestones"][0], "week": week, "title": "rest api"} for week in range(1, 7)]}
+        fake = Mock(return_value=json.dumps(repeated))
+        with self.assertRaises(RoadmapOutputError):
+            generate_roadmap(parse_roadmap_request(one_gap), fake)
+        self.assertEqual(fake.call_count, 2)
+
+    def test_weeks_are_capped_by_twice_the_gaps(self):
+        fake = Mock(return_value=milestones_json(["javascript", "react"], 4))
+        generate_roadmap(parse_roadmap_request(payload(missing_skills=["javascript", "react"], jd_gaps=[], known_skills=[], weeks=12)), fake)
+        self.assertIn("exactly 4 items", fake.call_args.args[0])
 
 
 class GenerateTests(unittest.TestCase):

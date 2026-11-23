@@ -3,6 +3,8 @@ const mongoose = require("mongoose");
 const milestoneSchema = new mongoose.Schema({
   week: { type: Number, min: 1, max: 12, required: true },
   skill: { type: String, maxlength: 60, required: true },
+  // "Skill: subtopic" (e.g. "REST API: routing and status codes"). Older roadmaps have none.
+  title: { type: String, maxlength: 120, default: "" },
   objective: { type: String, maxlength: 500, required: true },
   resources: {
     type: [{ type: String, maxlength: 200 }],

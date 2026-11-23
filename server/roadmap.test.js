@@ -40,8 +40,8 @@ test("Roadmap HTTP boundaries", async (t) => {
   });
   const flaskResult = {
     covered: false, message: "", skill_gaps: ["docker", "kubernetes"],
-    milestones: [1, 2, 3, 4, 5, 6].map((week) => ({
-      week, skill: week < 4 ? "docker" : "kubernetes", objective: `Objective ${week}`,
+    milestones: [1, 2, 3, 4].map((week) => ({
+      week, skill: week < 3 ? "docker" : "kubernetes", title: `Subtopic ${week}`, objective: `Objective ${week}`,
       resources: ["Docs", "Free course"], mini_project: "Extend Expense Tracker",
     })),
   };
@@ -144,7 +144,8 @@ test("Roadmap HTTP boundaries", async (t) => {
       }));
       assert.equal(saved.userId, owner);
       assert.equal(saved.jdMatchId, jdMatchId);
-      assert.equal(saved.milestones.length, 6);
+      assert.equal(saved.milestones.length, 4);
+      assert.equal(saved.milestones[2].title, "Subtopic 3");
       assert.equal(saved.milestones[0].miniProject, "Extend Expense Tracker");
       assert.equal((await response.json()).targetRole, "devops engineer");
     });
@@ -161,6 +162,15 @@ test("Roadmap HTTP boundaries", async (t) => {
       response = await request("POST", "", payload);
       assert.equal(response.status, 503);
       assert.doesNotMatch(await response.text(), /private/);
+      // At most 2 weeks per gap, and no title used more than twice.
+      for (const milestones of [
+        [1, 2, 3].map((week) => ({ ...flaskResult.milestones[0], week })),
+        flaskResult.milestones.map((item) => ({ ...item, title: "Same title" })),
+        flaskResult.milestones.map(({ title, ...item }) => item),
+      ]) {
+        flaskResponse = () => ({ data: { ...flaskResult, milestones } });
+        assert.equal((await request("POST", "", payload)).status, 503, JSON.stringify(milestones[0]));
+      }
       flaskResponse = () => ({ data: { covered: true, message: "covered", skill_gaps: [], milestones: [] } });
       assert.equal((await request("POST", "", payload)).status, 201);
       assert.equal(saved.covered, true);
