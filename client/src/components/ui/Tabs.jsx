@@ -3,7 +3,7 @@ import { cx } from "./utils";
 
 // WAI-ARIA tabs with automatic activation: arrow keys, Home and End move and select.
 // Render the selected panel with <TabPanel> using the same `idBase`.
-export function Tabs({ tabs, value, onChange, label, idBase, className }) {
+export function Tabs({ tabs, value, onChange, label, idBase, className, ...rest }) {
   const generated = useId();
   const base = idBase || generated;
   const refs = useRef({});
@@ -16,7 +16,7 @@ export function Tabs({ tabs, value, onChange, label, idBase, className }) {
     refs.current[next.id]?.focus();
   };
   return (
-    <div role="tablist" aria-label={label} className={cx("flex gap-1 overflow-x-auto border-b border-line", className)}>
+    <div role="tablist" aria-label={label} className={cx("flex gap-1 overflow-x-auto border-b border-line", className)} {...rest}>
       {tabs.map((tab, index) => {
         const selected = tab.id === value;
         return (
@@ -40,9 +40,10 @@ export function Tabs({ tabs, value, onChange, label, idBase, className }) {
   );
 }
 
-export function TabPanel({ idBase, id, className, children }) {
+// Pass `hidden` to keep an inactive panel in the DOM (e.g. so a full-report export can show it).
+export function TabPanel({ idBase, id, className, children, ...rest }) {
   return (
-    <div role="tabpanel" id={`${idBase}-panel-${id}`} aria-labelledby={`${idBase}-tab-${id}`} tabIndex={0} className={cx("pt-5", className)}>
+    <div role="tabpanel" id={`${idBase}-panel-${id}`} aria-labelledby={`${idBase}-tab-${id}`} tabIndex={0} className={cx("pt-5", className)} {...rest}>
       {children}
     </div>
   );

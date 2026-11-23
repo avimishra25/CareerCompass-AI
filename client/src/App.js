@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import AppShell     from "./components/shell/AppShell";
 import { AppDataProvider } from "./context/AppDataContext";
@@ -31,7 +31,6 @@ function AppInner() {
   // One-shot hand-off for cross-links (e.g. { analysisId, targetRole } for Roadmap). Every
   // navigation replaces it, so a later plain visit never reuses stale pre-selections.
   const [pageData, setPageData] = useState({});
-  const uploadRef = useRef(null);
 
   const navigate = (page, data = {}) => {
     if (page === "compare" && data.analysisA && data.analysisB) {
@@ -93,21 +92,7 @@ function AppInner() {
         <Dashboard onNavigate={navigate} />
       }
 
-      {currentPage === "analyze" &&
-        <div>
-          <div className="px-8 pt-10 pb-2 max-w-5xl mx-auto">
-            <h1 className="text-2xl font-extrabold" style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-              Resume Analysis
-            </h1>
-            <p className="text-sm mt-1 mb-2" style={{ color: "var(--text-2)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-              Upload your PDF resume and get your career match report instantly.
-            </p>
-          </div>
-          <div ref={uploadRef}>
-            <UploadResume onNavigate={navigate} presetFile={pageData.file} />
-          </div>
-        </div>
-      }
+      {currentPage === "analyze" && <UploadResume onNavigate={navigate} presetFile={pageData.file} />}
 
       {currentPage === "history" && <History onNavigate={navigate} />}
       {currentPage === "jd-match" && <JDMatch onNavigate={navigate} />}

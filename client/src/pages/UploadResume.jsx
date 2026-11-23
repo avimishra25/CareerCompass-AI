@@ -1,446 +1,162 @@
-import React, { useState, useRef } from "react";
+import React, { useRef, useState } from "react";
 import axios from "axios";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import ATSReport from "../components/ATSReport";
+import { Download, FileText, Upload } from "lucide-react";
 import { TARGET_ROLES } from "../constants/targetRoles";
 import { useOptionalAppData } from "../context/AppDataContext";
+import { Button, Card, Icon, InlineAlert, PageHeader, Select, SLOW_MESSAGE, cx, useSlowNotice } from "../components/ui";
+import { NextStepCard, ResultTabs, SummaryRow, nextStep, roleMissing, roleScore } from "../components/analysis/AnalysisResults";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
+const MAX_BYTES = 5 * 1024 * 1024;
 
 export default function UploadResume({ onNavigate, presetFile = null }) {
   // A PDF exported from the Resume Builder can be handed over for analysis.
-  const [file,             setFile]             = useState(presetFile);
+  const [file, setFile] = useState(presetFile);
+  const [targetRole, setTargetRole] = useState("");
+  const [result, setResult] = useState(null);
+  const [analysedAt, setAnalysedAt] = useState(null);
+  const [dragging, setDragging] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [error, setError] = useState("");
+  const fileRef = useRef(null);
+  const reportRef = useRef(null);
   const appData = useOptionalAppData();
-  const [analysisId,       setAnalysisId]        = useState(null);
-  const [isDragging,       setDragging]          = useState(false);
-  const [targetRole,       setTargetRole]        = useState("");
-  const [skills,           setSkills]            = useState([]);
-  const [matchData,        setMatchData]         = useState({});
-  const [bestRole,         setBestRole]          = useState(null);
-  const [targetRoleData,   setTargetRoleData]    = useState(null);
-  const [atsScore,         setAtsScore]          = useState(null);
-  const [atsBreakdown,     setAtsBreakdown]      = useState({});
-  const [mlInsights,       setMlInsights]        = useState(null);   // ← NEW
-  const [loading,          setLoading]           = useState(false);
-  const [pdfLoading,       setPdfLoading]        = useState(false);
-  const [error,            setError]             = useState("");
-  const fileRef    = useRef();
-  const reportRef  = useRef();   // ← used for PDF export
-  const token      = localStorage.getItem("token");
+  const slow = useSlowNotice(loading);
 
-  const handleFile = (f) => {
-    if (f?.type === "application/pdf") { setFile(f); setError(""); }
-    else setError("Please upload a valid PDF file.");
+  const handleFile = (candidate) => {
+    if (!candidate) return;
+    if (candidate.type !== "application/pdf") { setError("Choose a PDF file."); return; }
+    if (candidate.size > MAX_BYTES) { setError("The PDF is larger than 5 MB. Export a smaller file and try again."); return; }
+    setFile(candidate);
+    setError("");
   };
 
-  const handleUpload = async () => {
-    if (!file) { setError("Please select a resume first."); return; }
-    const fd = new FormData();
-    fd.append("resume", file);
-    if (targetRole) fd.append("targetRole", targetRole);
-
+  const analyze = async () => {
+    if (!file) return;
+    const form = new FormData();
+    form.append("resume", file);
+    if (targetRole) form.append("targetRole", targetRole);
+    setLoading(true);
+    setError("");
     try {
-      setLoading(true); setError("");
-      setSkills([]); setMatchData({}); setBestRole(null);
-      setAtsScore(null); setAtsBreakdown({}); setTargetRoleData(null);
-      setMlInsights(null);   // ← NEW: reset on each upload
-      setAnalysisId(null);
-
-      const res = await axios.post(`${API}/upload`, fd, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-
-      setSkills(res.data.skills              || []);
-      setMatchData(res.data.match            || {});
-      setBestRole(res.data.bestRole);
-      setAtsScore(res.data.atsScore          ?? null);
-      setAtsBreakdown(res.data.atsBreakdown  || {});
-      setTargetRoleData(res.data.targetRoleAnalysis || null);
-      setMlInsights(res.data.mlInsights      || null);   // ← NEW
-      setAnalysisId(res.data.analysisId      || null);
-      // The Career Coach panel talks about these fresh results; the shared history picks up the new analysis.
-      appData?.setCoachAnalysis({ ...res.data, targetRole });
+      const token = localStorage.getItem("token");
+      const { data } = await axios.post(`${API}/upload`, form, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      setResult({ ...data, targetRole, fileName: file.name });
+      setAnalysedAt(new Date());
+      // The Career Coach talks about these fresh results; the shared history picks up the new analysis.
+      appData?.setCoachAnalysis({ ...data, targetRole });
       appData?.reload();
     } catch (err) {
-      if (err.response?.status === 401) { localStorage.removeItem("token"); window.location.reload(); }
-      setError("Upload failed. Is the NLP server running?");
-    } finally { setLoading(false); }
+      if (err.response?.status === 401) { localStorage.removeItem("token"); window.location.reload(); return; }
+      setError(err.response?.data?.error === "PDF exceeds 5 MB limit"
+        ? "The PDF is larger than 5 MB. Export a smaller file and try again."
+        : "Analysis failed. Check the file and try again in a minute.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // ── PDF Download ──────────────────────────────────────────
-  const handleDownloadPDF = async () => {
+  // The report is an image of the summary and every tab (inactive tabs are revealed in the clone).
+  const downloadReport = async () => {
     if (!reportRef.current) return;
+    setPdfLoading(true);
     try {
-      setPdfLoading(true);
       const canvas = await html2canvas(reportRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#f0f2f7",
-        logging: false,
+        scale: 2, useCORS: true, backgroundColor: "#F7F8FA", logging: false,
+        onclone: (doc) => doc.querySelectorAll("[data-report-panel], [data-report-heading]").forEach((node) => { node.hidden = false; }),
       });
-      const imgData = canvas.toDataURL("image/png");
-      const pdf     = new jsPDF("p", "mm", "a4");
-      const pageW   = pdf.internal.pageSize.getWidth();
-      const pageH   = pdf.internal.pageSize.getHeight();
-      const imgH    = (canvas.height * pageW) / canvas.width;
-      let position  = 0;
-
-      pdf.addImage(imgData, "PNG", 0, position, pageW, imgH);
-
-      let heightLeft = imgH - pageH;
-      while (heightLeft > 0) {
-        position = heightLeft - imgH;
+      const image = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imageHeight = (canvas.height * pageWidth) / canvas.width;
+      pdf.addImage(image, "PNG", 0, 0, pageWidth, imageHeight);
+      for (let left = imageHeight - pageHeight; left > 0; left -= pageHeight) {
         pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, position, pageW, imgH);
-        heightLeft -= pageH;
+        pdf.addImage(image, "PNG", 0, left - imageHeight, pageWidth, imageHeight);
       }
-
-      const fileName = `CareerCompass-Report-${file?.name?.replace(".pdf", "") || "resume"}.pdf`;
-      pdf.save(fileName);
-    } catch (e) {
-      console.error("PDF export failed:", e);
+      pdf.save(`CareerCompass-report-${(result.fileName || "resume").replace(/\.pdf$/i, "")}.pdf`);
+    } catch {
+      setError("Could not create the PDF report. Try again.");
     } finally {
       setPdfLoading(false);
     }
   };
 
-  const scoreColor = (s) => {
-    const n = parseInt(s);
-    if (n >= 70) return "#3b6ef8";
-    if (n >= 40) return "#6c63ff";
-    return "#94a3b8";
-  };
-
-  const hasResults = skills.length > 0 || Object.keys(matchData).length > 0;
   // Cross-links pre-select this analysis and the target (or best-matched) role.
-  const nextRole = targetRole || bestRole?.role || "";
+  const role = result?.targetRole || result?.bestRole?.role || "";
+  const missing = result ? roleMissing(result.match, role) : [];
+  const step = result ? nextStep({ atsScore: result.atsScore, mlInsights: result.mlInsights, atsBreakdown: result.atsBreakdown, role, missing }) : null;
+  const go = (kind) => {
+    if (kind === "roadmap") onNavigate?.("roadmap", { analysisId: result.analysisId, targetRole: role });
+    if (kind === "interview") onNavigate?.("interview", { analysisId: result.analysisId, role });
+    if (kind === "resume") onNavigate?.("resume-builder");
+  };
+  const secondary = [
+    { kind: "roadmap", label: "Build roadmap" },
+    { kind: "interview", label: "Practise interview" },
+  ].filter((item) => item.kind !== step?.kind);
+
+  const uploadCard = (
+    <Card as="section" title={result ? "Analyze another resume" : "Upload your resume"}
+      description="One PDF, up to 5 MB. Choose a target role to benchmark against it, or let us find your best match.">
+      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] md:items-end">
+        <Select label="Target role (optional)" value={targetRole} onChange={(event) => setTargetRole(event.target.value)}
+          options={TARGET_ROLES} disabled={loading} />
+        <div>
+          <span className="mb-1.5 block text-sm font-medium text-ink-secondary">Resume PDF</span>
+          <div
+            onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(event) => { event.preventDefault(); setDragging(false); handleFile(event.dataTransfer.files[0]); }}
+            className={cx("flex min-h-9 flex-wrap items-center gap-3 rounded-control border border-dashed px-3 py-2 transition-ui",
+              dragging ? "border-brand bg-brand-tint" : "border-line-strong bg-surface")}
+          >
+            <Icon icon={file ? FileText : Upload} className="shrink-0 text-ink-muted" />
+            <span className="min-w-0 flex-1 truncate text-sm text-ink-secondary">
+              {file ? <><span className="font-medium text-ink">{file.name}</span> · <span className="tabular">{Math.max(1, Math.round(file.size / 1024))} KB</span></> : "Drop a PDF here"}
+            </span>
+            <Button size="sm" onClick={() => fileRef.current?.click()} disabled={loading}>{file ? "Change file" : "Choose file"}</Button>
+            <input ref={fileRef} type="file" accept=".pdf,application/pdf" className="hidden" aria-label="Resume PDF"
+              onChange={(event) => handleFile(event.target.files[0])} />
+          </div>
+        </div>
+      </div>
+      {presetFile && file === presetFile && !result && (
+        <p className="mt-3 text-sm text-brand">Your Resume Builder PDF is attached. Pick a target role if you like, then analyze it.</p>
+      )}
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <Button variant={result ? "secondary" : "primary"} icon={Upload} onClick={analyze} disabled={!file} loading={loading}>
+          {loading ? "Analyzing…" : "Analyze resume"}
+        </Button>
+        {loading && <span role="status" className="text-sm text-ink-muted">{slow ? SLOW_MESSAGE : "Reading your resume and scoring it. This takes a few seconds."}</span>}
+      </div>
+    </Card>
+  );
 
   return (
-    <section className="py-8 px-6">
-      <div className="max-w-5xl mx-auto">
-
-        {/* ── Upload card ── */}
-        <div className="glass rounded-3xl p-8 mb-6">
-          <h2 className="text-xl font-bold mb-1"
-            style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-            Analyze Your Resume
-          </h2>
-          <p className="text-sm mb-6"
-            style={{ color: "var(--text-2)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-            Upload a PDF — AI extracts skills, scores your ATS readiness, and matches you to 12 career paths.
-          </p>
-
-          {/* ── Target Role Selector ── */}
-          <div className="mb-5">
-            <label className="block text-xs font-semibold uppercase tracking-widest mb-2"
-              style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-              🎯 Target Role <span style={{ color: "var(--text-3)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional — set your goal)</span>
-            </label>
-            <div className="relative">
-              <select
-                value={targetRole}
-                onChange={(e) => setTargetRole(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "12px 40px 12px 16px",
-                  borderRadius: "12px",
-                  border: targetRole
-                    ? "1.5px solid rgba(59,110,248,0.5)"
-                    : "1.5px solid rgba(180,190,220,0.4)",
-                  background: targetRole ? "rgba(59,110,248,0.04)" : "rgba(255,255,255,0.5)",
-                  color: "var(--text)",
-                  fontFamily: "Plus Jakarta Sans, sans-serif",
-                  fontSize: "0.875rem",
-                  fontWeight: targetRole ? 600 : 400,
-                  appearance: "none",
-                  cursor: "pointer",
-                  outline: "none",
-                  transition: "all 0.2s",
-                }}>
-                {TARGET_ROLES.map((r) => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
-              </select>
-              <span style={{
-                position: "absolute", right: 14, top: "50%",
-                transform: "translateY(-50%)",
-                pointerEvents: "none", fontSize: "0.7rem", color: "var(--text-3)",
-              }}>▼</span>
-            </div>
-            {targetRole && (
-              <p className="text-xs mt-1.5" style={{ color: "#3b6ef8", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                Analysis will be benchmarked specifically against <strong>{targetRole}</strong>
-              </p>
-            )}
+    <>
+      <PageHeader
+        title="Resume analysis"
+        description="Your ATS score, the skills in your resume, and how you match 12 roles."
+        actions={result && <Button icon={Download} onClick={downloadReport} loading={pdfLoading}>Download report</Button>}
+      />
+      {error && <InlineAlert className="mb-4" onDismiss={() => setError("")}>{error}</InlineAlert>}
+      {result ? (
+        <div className="space-y-6">
+          <NextStepCard step={step} onAction={go} secondary={secondary} />
+          <div ref={reportRef} className="space-y-6">
+            <SummaryRow atsScore={result.atsScore} role={role} roleScore={roleScore(result.match, role) ?? result.bestRole?.score}
+              skillCount={result.skills?.length || 0} fileName={result.fileName} analysedAt={analysedAt} />
+            <ResultTabs skills={result.skills || []} atsBreakdown={result.atsBreakdown} mlInsights={result.mlInsights}
+              matchData={result.match} targetRole={role} />
           </div>
-
-          {/* Drop zone */}
-          <div
-            onClick={() => fileRef.current.click()}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files[0]); }}
-            className="cursor-pointer rounded-2xl p-10 text-center transition-all duration-200"
-            style={{
-              border: `2px dashed ${isDragging ? "#3b6ef8" : file ? "rgba(59,110,248,0.4)" : "rgba(180,190,220,0.5)"}`,
-              background: isDragging ? "rgba(59,110,248,0.04)" : "rgba(255,255,255,0.4)",
-              boxShadow: isDragging ? "0 0 0 4px rgba(59,110,248,0.08)" : "none",
-            }}>
-            <input ref={fileRef} type="file" accept=".pdf" className="hidden"
-              onChange={(e) => handleFile(e.target.files[0])} />
-            <div className="text-3xl mb-3">{file ? "📄" : "☁️"}</div>
-            {file ? (
-              <>
-                <p className="text-sm font-semibold"
-                  style={{ color: "#3b6ef8", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                  {file.name}
-                </p>
-                <p className="text-xs mt-1" style={{ color: "var(--text-3)" }}>
-                  {(file.size / 1024).toFixed(1)} KB · Click to change
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-medium"
-                  style={{ color: "var(--text-2)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                  Drop your resume here
-                </p>
-                <p className="text-xs mt-1" style={{ color: "var(--text-3)" }}>
-                  or click to browse · PDF only
-                </p>
-              </>
-            )}
-          </div>
-
-          {presetFile && file === presetFile && !hasResults && (
-            <p className="mt-3 text-xs" style={{ color: "#3b6ef8", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-              Your Resume Builder PDF is attached. Pick a target role if you like, then click Analyze.
-            </p>
-          )}
-
-          {error && (
-            <div className="mt-4 rounded-xl px-4 py-3 text-sm"
-              style={{ background: "rgba(244,63,126,0.07)", border: "1px solid rgba(244,63,126,0.18)", color: "#e11d6a" }}>
-              {error}
-            </div>
-          )}
-
-          <button onClick={handleUpload} disabled={loading || !file}
-            className="btn-primary w-full mt-4 py-3.5 rounded-xl text-sm disabled:opacity-40 disabled:cursor-not-allowed">
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                </svg>
-                Analyzing…
-              </span>
-            ) : "Analyze Resume →"}
-          </button>
+          {uploadCard}
         </div>
-
-        {/* ── Results ── */}
-        {hasResults && (
-          <div className="space-y-5">
-
-            {/* ── PDF Download button ── */}
-            <div className="flex justify-end">
-              <button
-                onClick={handleDownloadPDF}
-                disabled={pdfLoading}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all"
-                style={{
-                  background: pdfLoading ? "rgba(59,110,248,0.1)" : "rgba(59,110,248,0.08)",
-                  border: "1.5px solid rgba(59,110,248,0.25)",
-                  color: "#3b6ef8",
-                  fontFamily: "Plus Jakarta Sans, sans-serif",
-                  cursor: pdfLoading ? "not-allowed" : "pointer",
-                }}>
-                {pdfLoading ? (
-                  <>
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                    </svg>
-                    Generating PDF…
-                  </>
-                ) : (
-                  <>📥 Download Report (PDF)</>
-                )}
-              </button>
-            </div>
-
-            {/* ── Printable report area ── */}
-            <div ref={reportRef} className="space-y-5" style={{ background: "transparent" }}>
-
-              {/* ── Target Role spotlight banner ── */}
-              {targetRoleData && (
-                <div className="glass rounded-3xl p-6"
-                  style={{ border: "1.5px solid rgba(59,110,248,0.3)", background: "rgba(59,110,248,0.04)" }}>
-                  <p className="text-xs font-semibold uppercase tracking-wider mb-1"
-                    style={{ color: "#3b6ef8", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                    🎯 Your Target Role Analysis
-                  </p>
-                  <div className="flex items-center justify-between flex-wrap gap-4">
-                    <div>
-                      <h3 className="text-xl font-bold capitalize"
-                        style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                        {targetRoleData.emoji} {targetRoleData.role}
-                      </h3>
-                      {targetRoleData.missing?.length > 0 && (
-                        <p className="text-xs mt-1.5" style={{ color: "var(--text-3)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                          Skills to acquire: {" "}
-                          <span style={{ color: "#e11d6a", fontWeight: 600 }}>
-                            {targetRoleData.missing.slice(0, 6).join(", ")}
-                            {targetRoleData.missing.length > 6 ? ` +${targetRoleData.missing.length - 6} more` : ""}
-                          </span>
-                        </p>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <span className="text-4xl font-extrabold"
-                        style={{
-                          color: targetRoleData.score >= 70 ? "#10b981" : targetRoleData.score >= 40 ? "#3b6ef8" : "#f59e0b",
-                          fontFamily: "Plus Jakarta Sans, sans-serif",
-                        }}>
-                        {targetRoleData.score}%
-                      </span>
-                      <p className="text-xs mt-0.5" style={{ color: "var(--text-3)" }}>readiness</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Best match banner (auto-detected) */}
-              {bestRole && !targetRoleData && (
-                <div className="glass rounded-3xl p-6 flex items-center justify-between flex-wrap gap-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider mb-1"
-                      style={{ color: "var(--text-3)" }}>Best Career Match</p>
-                    <h3 className="text-xl font-bold capitalize gradient-text"
-                      style={{ fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                      {matchData[bestRole.role]?.emoji} {bestRole.role}
-                    </h3>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-4xl font-extrabold gradient-text"
-                      style={{ fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                      {bestRole.score}%
-                    </span>
-                    <p className="text-xs mt-0.5" style={{ color: "var(--text-3)" }}>compatibility</p>
-                  </div>
-                </div>
-              )}
-
-              {/* ── ATS Score Report — now also receives mlInsights ── */}
-              {atsScore !== null && (
-                <ATSReport
-                  atsScore={atsScore}
-                  atsBreakdown={atsBreakdown}
-                  mlInsights={mlInsights}
-                />
-              )}
-
-              {/* Next steps — skipped by html2canvas so they never appear in the PDF report */}
-              {analysisId && onNavigate && (
-                <div data-html2canvas-ignore="true" aria-label="Next steps" role="group"
-                  className="glass rounded-2xl p-5 flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm" style={{ color: "var(--text-2)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                    Next: close the gaps{nextRole ? <> for <strong className="capitalize">{nextRole}</strong></> : ""} and practise for interviews.
-                  </p>
-                  <div className="flex flex-wrap gap-2.5">
-                    <button type="button" className="btn-primary px-4 py-2.5 rounded-xl text-sm"
-                      onClick={() => onNavigate("roadmap", { analysisId, targetRole: nextRole })}>
-                      🗺️ Build my roadmap
-                    </button>
-                    <button type="button" className="btn-ghost px-4 py-2.5 rounded-xl text-sm"
-                      onClick={() => onNavigate("interview", { analysisId, role: nextRole })}>
-                      🎤 Practise interview
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="grid md:grid-cols-2 gap-5">
-
-                {/* Skills */}
-                {skills.length > 0 && (
-                  <div className="glass rounded-2xl p-6">
-                    <h3 className="font-bold text-sm mb-3 flex items-center gap-2"
-                      style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                      🧠 Extracted Skills
-                      <span className="ml-auto text-xs font-normal" style={{ color: "var(--text-3)" }}>
-                        {skills.length} found
-                      </span>
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {skills.map((s, i) => (
-                        <span key={i} className="skill-pill">{s}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Career Match */}
-                {Object.keys(matchData).length > 0 && (
-                  <div className="glass rounded-2xl p-6">
-                    <h3 className="font-bold text-sm mb-4"
-                      style={{ color: "var(--text)", fontFamily: "Plus Jakarta Sans, sans-serif" }}>
-                      🎯 Career Match
-                    </h3>
-                    <div className="space-y-4">
-                      {Object.entries(matchData)
-                        .sort((a, b) => parseInt(b[1].score) - parseInt(a[1].score))
-                        .map(([role, data]) => (
-                          <div key={role}>
-                            <div className="flex justify-between mb-1.5">
-                              <span className="text-sm font-medium capitalize"
-                                style={{
-                                  color: role === targetRole ? "#3b6ef8" : "var(--text)",
-                                  fontFamily: "Plus Jakarta Sans, sans-serif",
-                                  fontWeight: role === targetRole ? 700 : 500,
-                                }}>
-                                {data.emoji} {role}
-                                {role === targetRole && (
-                                  <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full"
-                                    style={{ background: "rgba(59,110,248,0.1)", color: "#3b6ef8" }}>
-                                    target
-                                  </span>
-                                )}
-                              </span>
-                              <span className="text-sm font-bold" style={{ color: scoreColor(data.score) }}>
-                                {data.score}%
-                              </span>
-                            </div>
-                            <div className="progress-track">
-                              <div className="progress-fill"
-                                style={{
-                                  width: `${data.score}%`,
-                                  background: role === targetRole
-                                    ? "linear-gradient(90deg, #3b6ef8, #06b6d4)"
-                                    : `linear-gradient(90deg, ${scoreColor(data.score)}, #6c63ff)`,
-                                }} />
-                            </div>
-                            {data.missing?.length > 0 && (
-                              <p className="text-xs mt-1" style={{ color: "var(--text-3)" }}>
-                                Missing: {data.missing.slice(0, 4).join(", ")}
-                                {data.missing.length > 4 ? ` +${data.missing.length - 4} more` : ""}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
-
-              </div>
-            </div>
-            {/* ── end printable area ── */}
-
-          </div>
-        )}
-      </div>
-    </section>
+      ) : uploadCard}
+    </>
   );
 }
