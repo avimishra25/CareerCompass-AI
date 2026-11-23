@@ -58,7 +58,7 @@ The ATS model trains on 600 synthetic feature samples across three quality tiers
 - Older analyses without saved resume text require a fresh upload
 
 ### 🗺️ Career Roadmap
-- Week-by-week learning plan (6 weeks by default, from 2–40 hours per week) for one of the 12 target roles
+- Week-by-week learning plan (up to 6 weeks, at most 2 weeks per skill gap, 2–40 hours per week) for one of the 12 target roles, each week titled with a specific subtopic
 - Gaps = the role's missing skills from a saved analysis, plus missing skills from an optional saved JD match, minus skills already on the resume
 - Prerequisites come first (e.g. JavaScript → TypeScript, Docker → Kubernetes, Python → pandas → scikit-learn)
 - Each week has an objective, 2–3 free resources, and a mini-project that extends a project from your resume when one is found
@@ -411,14 +411,28 @@ Skills already detected on the resume are removed and duplicates are dropped. A 
 `ml-service/roadmap.py` then sorts the gaps so (transitive) prerequisites come first. Unrelated skills keep their order.
 If no gaps remain, the result says you already cover the role and Gemini is not called.
 
-Gemini is asked for exactly `weeks` milestones (default 6) of `{ week, skill, objective, resources, mini_project }`.
-Each skill must come from the gap list, and resources must be 2–3 free resources. The prompt includes up to
-1500 characters of the resume's Projects section so mini-projects can extend existing work. Flask checks every
-field (required keys, types, lengths, weeks 1..N each once, skills from the gap list), then reorders milestones
-by gap order. A schema-invalid response is retried once, then Flask returns 502
+The plan has `min(weeks, 2 × gaps)` weeks (`weeks` defaults to 6), so a single gap gives a 2-week plan.
+Gemini is asked for exactly that many milestones of `{ week, skill, title, objective, resources, mini_project }`:
+- each skill must come from the gap list
+- `title` names a specific subtopic, such as "REST API: routing and status codes"
+- resources must be 2–3 free resources
+
+The prompt includes up to 1500 characters of the resume's Projects section, so mini-projects can extend
+existing work.
+
+Flask checks every field: required keys, types and lengths; weeks 1..N, each once; skills from the gap list.
+It also rejects:
+- a title that is only the skill name
+- more than 2 weeks on one skill
+- any title used more than twice
+
+It then reorders milestones by gap order. Node repeats these checks before saving.
+
+A schema-invalid response is retried once; after that, Flask returns 502
 `AI returned an invalid roadmap. Try again.` Malformed JSON is repaired once inside `llm.py`. One generation can
-therefore make up to six SDK requests in the worst case. If there are fewer gaps than weeks, a skill spans
-several weeks; if there are more, only the first `weeks` gaps fit, and the rest stay listed as remaining gaps.
+therefore make up to six SDK requests in the worst case. If there are more gaps than weeks, only the first
+`weeks` gaps fit, and the rest stay listed as remaining gaps. A role you already cover shows "You cover this role.
+Pick another role or add a JD match." instead of a plan.
 
 Milestones are LLM suggestions: check that each resource exists and is still free. A milestone is marked
 complete automatically only when a later upload's extracted skills include it, which is a text mention, not proof of ability.
