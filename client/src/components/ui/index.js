@@ -10,3 +10,4 @@ export { default as ScoreRing, formatScore, scoreTone } from "./ScoreRing";
 export { TabPanel, Tabs } from "./Tabs";
 export { default as Tooltip } from "./Tooltip";
 export { charCount, cx } from "./utils";
+export { default as LoadingState, SLOW_MESSAGE, useSlowNotice } from "./LoadingState";

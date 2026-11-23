@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Plus } from "lucide-react";
-import { Badge, Button, EmptyState, InlineAlert, Input, ProgressBar, ScoreRing, Select, Skeleton, TabPanel, Tabs, Textarea, Tooltip, scoreTone } from ".";
+import { Badge, Button, EmptyState, InlineAlert, Input, LoadingState, ProgressBar, SLOW_MESSAGE, ScoreRing, Select, Skeleton, TabPanel, Tabs, Textarea, Tooltip, scoreTone } from ".";
 import { roleIcon, roleLabel, ROLES, TARGET_ROLES } from "../../constants/targetRoles";
 
 test("Button: variants, loading keeps it disabled and busy, icon-only uses its aria-label", () => {
@@ -120,4 +120,19 @@ test("all 12 roles have a sentence-case label and an icon, without emoji", () =>
   expect(roleLabel("ui/ux designer")).toBe("UI/UX designer");
   expect(roleLabel("cloud engineer")).toBe("Cloud engineer");
   expect(roleIcon("unknown")).toBeTruthy();
+});
+
+test("LoadingState shows a skeleton, then explains a cold server after 8 seconds", () => {
+  jest.useFakeTimers();
+  try {
+    render(<LoadingState label="Loading your sessions" />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading your sessions");
+    expect(screen.queryByText(SLOW_MESSAGE)).not.toBeInTheDocument();
+    act(() => { jest.advanceTimersByTime(7999); });
+    expect(screen.queryByText(SLOW_MESSAGE)).not.toBeInTheDocument();
+    act(() => { jest.advanceTimersByTime(1); });
+    expect(screen.getByText("Waking up the server, this can take up to a minute on first load.")).toBeInTheDocument();
+  } finally {
+    jest.useRealTimers();
+  }
 });
