@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
+import { ArrowRight, Check, Download, Import, Pencil, Plus, RefreshCw, Save, Sparkles, Trash2, X } from "lucide-react";
+import { Badge, Button, Card, Icon, InlineAlert, Input, LoadingState, PageHeader, ScoreRing, Select, Textarea, cx } from "../components/ui";
 import {
   SECTION_TABS, cleanDraft, dateRange, draftToText, emptyDraft, emptyEducation, emptyExperience, emptyProject,
   emptySkillGroup, isSectionComplete, normalizeDraft,
@@ -10,71 +12,60 @@ const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
 const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
 const errorMessage = (error, fallback) => error.response?.data?.error || error.response?.data?.message || fallback;
 
-const font = "Plus Jakarta Sans, sans-serif";
-const labelStyle = { fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)" };
-const okPill = { display: "inline-block", background: "rgba(16,185,129,0.08)", borderColor: "rgba(16,185,129,0.22)", color: "#059669" };
-const missPill = { display: "inline-block", background: "rgba(244,63,126,0.07)", borderColor: "rgba(244,63,126,0.2)", color: "#e11d63" };
-const activePill = { display: "inline-block", background: "linear-gradient(135deg,#3b6ef8,#6c63ff)", borderColor: "transparent", color: "#fff" };
-const badge = { fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 999 };
-const greyBadge = { ...badge, background: "rgba(136,146,180,0.12)", color: "#4a5278" };
-const inputClass = "input-glass block w-full rounded-xl px-3 py-2 mt-1 text-sm";
-const serif = "Georgia, 'Times New Roman', serif";
 const MAX_BULLETS = 8;
+const TONES = [{ value: "professional", label: "Professional" }, { value: "concise", label: "Concise" }];
 
 const clip = (value, max) => [...value].slice(0, max).join("");
 const toLines = (value) => value.split("\n");
 const toList = (value) => value.split(/,\s*/);
 
-function Field({ id, label, value, onChange, maxLength, placeholder, textarea, rows = 3 }) {
-  return (
-    <div>
-      <label htmlFor={id} className="text-xs" style={{ color: "var(--text-3)" }}>{label}</label>
-      {textarea
-        ? <textarea id={id} className={inputClass} rows={rows} value={value} maxLength={maxLength} placeholder={placeholder}
-            onChange={(event) => onChange(event.target.value)} style={{ lineHeight: 1.5 }} />
-        : <input id={id} className={inputClass} value={value} maxLength={maxLength} placeholder={placeholder}
-            onChange={(event) => onChange(event.target.value)} />}
-    </div>
-  );
+// Text field bound to a plain string; `textarea` switches to the multi-line control.
+function Field({ id, label, value, onChange, maxLength, placeholder, textarea, rows = 3, hint }) {
+  const props = { id, label, value, placeholder, hint, onChange: (event) => onChange(event.target.value) };
+  return textarea
+    ? <Textarea {...props} rows={rows} maxLength={maxLength} />
+    : <Input {...props} maxLength={maxLength} />;
 }
 
 function EnhancePanel({ id, notes, onNotes, tone, onTone, suggestion, busy, onEnhance, onAccept, onEdit, onEditText, onDismiss, notesLabel = "Your notes" }) {
   return (
-    <div className="mt-3">
+    <div className="mt-4 rounded-card border border-line bg-page p-4">
       <Field id={`${id}-notes`} label={notesLabel} textarea value={notes} onChange={onNotes} maxLength={1500}
         placeholder="Write what you did in plain words. AI will only rephrase it." />
-      <div className="flex flex-wrap items-center gap-2.5 mt-3">
-        <button type="button" className="btn-primary px-4 py-2 rounded-xl text-sm disabled:opacity-50"
-          disabled={busy || !notes.trim()} onClick={onEnhance}>{busy ? "Enhancing…" : "✨ Enhance with AI"}</button>
-        <label htmlFor={`${id}-tone`} className="sr-only">Tone</label>
-        <select id={`${id}-tone`} className="btn-ghost rounded-xl px-3 py-2 text-sm" value={tone} onChange={(event) => onTone(event.target.value)}>
-          <option value="professional">Tone: Professional</option>
-          <option value="concise">Tone: Concise</option>
-        </select>
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <Select id={`${id}-tone`} label="Tone" value={tone} onChange={(event) => onTone(event.target.value)} options={TONES} className="w-40" />
+        <Button icon={Sparkles} loading={busy && !suggestion} disabled={busy || !notes.trim()} onClick={onEnhance}>
+          {busy && !suggestion ? "Improving…" : "Improve with AI"}
+        </Button>
       </div>
       {suggestion && (
-        <div className="mt-4 rounded-2xl p-3.5" aria-label="AI suggestion" role="region"
-          style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.2)" }}>
-          <div style={{ ...labelStyle, color: "#059669" }}>AI suggestion</div>
-          {suggestion.editing ? (
-            <>
-              <label htmlFor={`${id}-edit`} className="sr-only">Edit suggestion</label>
-              <textarea id={`${id}-edit`} className={inputClass} rows={5} value={suggestion.text}
-                onChange={(event) => onEditText(event.target.value)} />
-            </>
-          ) : (
-            <ul className="mt-2 ml-4 list-disc" style={{ fontSize: "12.5px", lineHeight: 1.55, color: "var(--text)" }}>
-              {suggestion.bullets.map((bullet) => <li key={bullet} className="mb-1">{bullet}</li>)}
-            </ul>
-          )}
-          <div className="flex flex-wrap gap-2 mt-2.5">
-            <button type="button" style={{ ...badge, background: "rgba(16,185,129,0.12)", color: "#059669" }} onClick={onAccept}>✓ Accept</button>
-            {!suggestion.editing && <button type="button" style={greyBadge} onClick={onEdit}>Edit</button>}
-            <button type="button" style={greyBadge} disabled={busy} onClick={onEnhance}>{busy ? "Regenerating…" : "Regenerate"}</button>
-            <button type="button" style={greyBadge} onClick={onDismiss}>Discard</button>
+        <div className="mt-4 rounded-card border border-line bg-surface" aria-label="AI suggestion" role="region">
+          {/* Before → after, so the change is easy to judge. */}
+          <div className="grid gap-px overflow-hidden rounded-t-card bg-line md:grid-cols-2">
+            <div className="bg-surface p-3">
+              <p className="text-xs font-medium text-ink-muted">Your notes</p>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-ink-secondary">{notes}</p>
+            </div>
+            <div className="bg-surface p-3">
+              <p className="flex items-center gap-1 text-xs font-medium text-brand"><Icon icon={ArrowRight} size={12} />Suggestion</p>
+              {suggestion.editing ? (
+                <Textarea id={`${id}-edit`} label="Edit suggestion" hideLabel rows={5} className="mt-1" value={suggestion.text}
+                  onChange={(event) => onEditText(event.target.value)} />
+              ) : (
+                <ul className="mt-1 space-y-1.5">
+                  {suggestion.bullets.map((bullet) => <li key={bullet} className="border-l-2 border-brand pl-2 text-sm text-ink">{bullet}</li>)}
+                </ul>
+              )}
+            </div>
           </div>
-          <p className="mt-2" style={{ fontSize: 11, color: "var(--text-3)" }}>
-            AI only rephrases what you wrote — it never adds experience you don't have. Check every bullet before you accept it.
+          <div className="flex flex-wrap items-center gap-2 border-t border-line p-3">
+            <Button size="sm" variant="primary" icon={Check} onClick={onAccept}>Accept</Button>
+            {!suggestion.editing && <Button size="sm" icon={Pencil} onClick={onEdit}>Edit</Button>}
+            <Button size="sm" icon={RefreshCw} loading={busy} onClick={onEnhance}>{busy ? "Regenerating…" : "Regenerate"}</Button>
+            <Button size="sm" variant="ghost" icon={X} onClick={onDismiss}>Discard</Button>
+          </div>
+          <p className="border-t border-line px-3 py-2 text-xs text-ink-muted">
+            AI only rephrases what you wrote. It never adds experience you don't have. Check every bullet before you accept it.
           </p>
         </div>
       )}
@@ -82,52 +73,35 @@ function EnhancePanel({ id, notes, onNotes, tone, onTone, suggestion, busy, onEn
   );
 }
 
-function ScoreRing({ score }) {
-  const value = score ?? 0;
-  const color = value >= 75 ? "#10b981" : value >= 50 ? "#f59e0b" : "#f43f7e";
-  return (
-    <div role="img" aria-label={score == null ? "ATS score not available yet" : `ATS score ${score} out of 100`}
-      style={{ width: 74, height: 74, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-        background: `conic-gradient(${color} 0 ${value}%, rgba(16,185,129,0.12) ${value}% 100%)`, transition: "background 0.6s" }}>
-      <div style={{ width: 60, height: 60, borderRadius: "50%", background: "#f4f6fb", display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center" }}>
-        <b style={{ fontSize: 20, color }}>{score ?? "–"}</b>
-        <span style={{ fontSize: 9, color: "var(--text-3)" }}>/100</span>
-      </div>
-    </div>
-  );
-}
-
+// The resume itself (not app UI) keeps the serif document font, matching the exported PDF.
 function Preview({ draft, highlighted }) {
   const s = cleanDraft(draft).sections;
-  const heading = (text) => (
-    <h3 style={{ fontSize: "11.5px", fontWeight: 700, borderBottom: "1px solid #333", marginTop: 12, paddingBottom: 2, letterSpacing: "0.04em" }}>{text}</h3>
-  );
+  const mark = (item) => (highlighted.has(item) ? "bg-brand-tint" : "");
+  const heading = (text) => <h3 className="mt-3 border-b border-[#333] pb-0.5 text-xs font-semibold tracking-[0.04em]">{text}</h3>;
   const bulletList = (items) => (
-    <ul style={{ fontSize: "10.5px", margin: "2px 0 0 16px", lineHeight: 1.45, listStyle: "disc" }}>
+    <ul className="ml-4 mt-0.5 list-disc text-xs leading-5">
       {items.map((item, index) => (
-        <li key={`${index}-${item}`} data-highlighted={highlighted.has(item) || undefined}
-          style={{ background: highlighted.has(item) ? "rgba(16,185,129,0.15)" : "transparent", transition: "background 0.8s", borderRadius: 3 }}>{item}</li>
+        <li key={`${index}-${item}`} data-highlighted={highlighted.has(item) || undefined} className={cx("rounded-sm transition-ui", mark(item))}>{item}</li>
       ))}
     </ul>
   );
   const contact = [s.contact.email, s.contact.phone, ...s.contact.links].filter(Boolean);
   const empty = !draftToText(draft);
   return (
-    <section aria-label="Resume preview" className="glass rounded-2xl" style={{ background: "#fff", padding: "26px 30px", fontFamily: serif, color: "#111" }}>
-      {empty && <p style={{ fontSize: 12, color: "#666", fontFamily: font }}>Your resume preview appears here as you fill in sections.</p>}
-      {s.contact.name && <h2 style={{ textAlign: "center", fontSize: 20, fontWeight: 700 }}>{s.contact.name.toUpperCase()}</h2>}
-      {contact.length > 0 && <p style={{ textAlign: "center", fontSize: "10.5px", color: "#444", marginTop: 2 }}>{contact.join(" · ")}</p>}
-      {s.summary && <>{heading("SUMMARY")}
-        <p style={{ fontSize: "10.5px", marginTop: 4, lineHeight: 1.45, background: highlighted.has(s.summary) ? "rgba(16,185,129,0.15)" : "transparent", transition: "background 0.8s" }}>{s.summary}</p></>}
+    <section aria-label="Resume preview" style={{ fontFamily: "var(--font-serif-document)" }}
+      className="aspect-[210/297] w-full overflow-y-auto rounded-card border border-line bg-white p-6 text-[#111] shadow-card">
+      {empty && <p className="font-sans text-sm text-ink-muted">Your resume preview appears here as you fill in sections.</p>}
+      {s.contact.name && <h2 className="text-center text-lg font-semibold">{s.contact.name.toUpperCase()}</h2>}
+      {contact.length > 0 && <p className="mt-0.5 text-center text-xs text-[#444]">{contact.join(" · ")}</p>}
+      {s.summary && <>{heading("SUMMARY")}<p className={cx("mt-1 text-xs leading-5 transition-ui", mark(s.summary))}>{s.summary}</p></>}
       {s.skills.length > 0 && <>{heading("SKILLS")}
         {s.skills.map((group, index) => (
-          <p key={index} style={{ fontSize: "10.5px", marginTop: 4, lineHeight: 1.45 }}>{group.group && <b>{group.group}: </b>}{group.items.join(", ")}</p>
+          <p key={index} className="mt-1 text-xs leading-5">{group.group && <b>{group.group}: </b>}{group.items.join(", ")}</p>
         ))}</>}
       {s.experience.length > 0 && <>{heading("EXPERIENCE")}
         {s.experience.map((item, index) => (
           <div key={index}>
-            <p style={{ fontSize: "10.5px", marginTop: 4, display: "flex", justifyContent: "space-between", gap: 8 }}>
+            <p className="mt-1 flex justify-between gap-2 text-xs">
               <span><b>{item.role}</b>{item.role && item.org ? ", " : ""}{item.org}</span><span>{dateRange(item.start, item.end)}</span>
             </p>
             {bulletList(item.bullets)}
@@ -136,14 +110,14 @@ function Preview({ draft, highlighted }) {
       {s.projects.length > 0 && <>{heading("PROJECTS")}
         {s.projects.map((item, index) => (
           <div key={index}>
-            <p style={{ fontSize: "10.5px", marginTop: 4 }}><b>{item.name}</b>{item.tech.length > 0 && ` · ${item.tech.join(", ")}`}</p>
+            <p className="mt-1 text-xs"><b>{item.name}</b>{item.tech.length > 0 && ` · ${item.tech.join(", ")}`}</p>
             {bulletList(item.bullets)}
           </div>
         ))}</>}
       {s.education.length > 0 && <>{heading("EDUCATION")}
         {s.education.map((item, index) => (
-          <p key={index} style={{ fontSize: "10.5px", marginTop: 4, display: "flex", justifyContent: "space-between", gap: 8 }}>
-            <span><b>{item.degree}</b>{item.degree && item.institute ? ", " : ""}{item.institute}{item.score && ` — ${item.score}`}</span>
+          <p key={index} className="mt-1 flex justify-between gap-2 text-xs">
+            <span><b>{item.degree}</b>{item.degree && item.institute ? ", " : ""}{item.institute}{item.score && ` · ${item.score}`}</span>
             <span>{dateRange(item.start, item.end)}</span>
           </p>
         ))}</>}
@@ -351,7 +325,7 @@ export default function ResumeBuilder({ onNavigate }) {
     switch (active) {
       case "contact":
         return (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field id="contact-name" label="Full name" value={sections.contact.name} maxLength={100}
               onChange={(value) => setField("contact", { ...sections.contact, name: value })} />
             <Field id="contact-email" label="Email" value={sections.contact.email} maxLength={254}
@@ -376,17 +350,17 @@ export default function ResumeBuilder({ onNavigate }) {
         );
       case "skills":
         return (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {sections.skills.map((group, index) => (
-              <div key={index} className="grid gap-2 sm:grid-cols-[1fr_2fr_auto] items-end">
+              <div key={index} className="grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto]">
                 <Field id={`skills-${index}-group`} label="Group" value={group.group} maxLength={60} placeholder="Languages"
                   onChange={(value) => setEntry("skills", index, { group: value })} />
                 <Field id={`skills-${index}-items`} label="Skills (comma separated)" value={group.items.join(", ")}
                   onChange={(value) => setEntry("skills", index, { items: toList(value).slice(0, 30) })} />
-                <button type="button" className="text-xs text-red-600 pb-2" onClick={() => removeEntry("skills", index)}>Remove</button>
+                <Button variant="ghost" icon={Trash2} aria-label={`Remove skill group ${index + 1}`} onClick={() => removeEntry("skills", index)} />
               </div>
             ))}
-            {sections.skills.length < 10 && <button type="button" className="btn-ghost rounded-xl px-3 py-1.5 text-xs" onClick={() => addEntry("skills", emptySkillGroup)}>+ Add skill group</button>}
+            {sections.skills.length < 10 && <Button size="sm" icon={Plus} onClick={() => addEntry("skills", emptySkillGroup)}>Add skill group</Button>}
           </div>
         );
       case "experience":
@@ -394,23 +368,23 @@ export default function ResumeBuilder({ onNavigate }) {
         const isProject = active === "projects";
         const list = sections[active];
         return (
-          <div className="space-y-5">
+          <div className="space-y-6">
             {list.map((entry, index) => {
               const id = `${active}-${index}`;
               const title = isProject ? entry.name : [entry.role, entry.org].filter(Boolean).join(" at ");
               return (
-                <div key={index} className="space-y-3" style={{ borderTop: index ? "1px solid rgba(180,190,220,0.4)" : "none", paddingTop: index ? 16 : 0 }}>
-                  <div className="flex justify-between items-center">
-                    <div style={labelStyle}>{isProject ? "Project" : "Experience"} · {title || "New entry"}</div>
-                    <button type="button" className="text-xs text-red-600" onClick={() => removeEntry(active, index)}>Remove</button>
+                <div key={index} className={cx("space-y-4", index > 0 && "border-t border-line pt-5")}>
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="truncate text-sm font-semibold text-ink">{title || (isProject ? "New project" : "New experience")}</h3>
+                    <Button size="sm" variant="ghost" icon={Trash2} onClick={() => removeEntry(active, index)}>Remove</Button>
                   </div>
                   {isProject ? (
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-4 sm:grid-cols-2">
                       <Field id={`${id}-name`} label="Project name" value={entry.name} maxLength={150} onChange={(value) => setEntry(active, index, { name: value })} />
                       <Field id={`${id}-tech`} label="Tech (comma separated)" value={entry.tech.join(", ")} onChange={(value) => setEntry(active, index, { tech: toList(value).slice(0, 15) })} />
                     </div>
                   ) : (
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-4 sm:grid-cols-2">
                       <Field id={`${id}-role`} label="Role" value={entry.role} maxLength={150} onChange={(value) => setEntry(active, index, { role: value })} />
                       <Field id={`${id}-org`} label="Organisation" value={entry.org} maxLength={150} onChange={(value) => setEntry(active, index, { org: value })} />
                       <Field id={`${id}-start`} label="Start" value={entry.start} maxLength={30} placeholder="May 2026" onChange={(value) => setEntry(active, index, { start: value })} />
@@ -424,26 +398,27 @@ export default function ResumeBuilder({ onNavigate }) {
               );
             })}
             {list.length < 10 && (
-              <button type="button" className="btn-ghost rounded-xl px-3 py-1.5 text-xs"
-                onClick={() => addEntry(active, isProject ? emptyProject : emptyExperience)}>+ Add {isProject ? "project" : "experience"}</button>
+              <Button size="sm" icon={Plus} onClick={() => addEntry(active, isProject ? emptyProject : emptyExperience)}>
+                Add {isProject ? "project" : "experience"}
+              </Button>
             )}
           </div>
         );
       }
       case "education":
         return (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {sections.education.map((entry, index) => (
-              <div key={index} className="grid gap-3 sm:grid-cols-2">
+              <div key={index} className={cx("grid gap-4 sm:grid-cols-2", index > 0 && "border-t border-line pt-5")}>
                 <Field id={`education-${index}-degree`} label="Degree" value={entry.degree} maxLength={150} onChange={(value) => setEntry("education", index, { degree: value })} />
                 <Field id={`education-${index}-institute`} label="Institute" value={entry.institute} maxLength={150} onChange={(value) => setEntry("education", index, { institute: value })} />
                 <Field id={`education-${index}-start`} label="Start" value={entry.start} maxLength={30} onChange={(value) => setEntry("education", index, { start: value })} />
                 <Field id={`education-${index}-end`} label="End" value={entry.end} maxLength={30} onChange={(value) => setEntry("education", index, { end: value })} />
                 <Field id={`education-${index}-score`} label="Score (CGPA / %)" value={entry.score} maxLength={30} onChange={(value) => setEntry("education", index, { score: value })} />
-                <button type="button" className="text-xs text-red-600 justify-self-start self-end pb-2" onClick={() => removeEntry("education", index)}>Remove</button>
+                <Button size="sm" variant="ghost" icon={Trash2} className="self-end justify-self-start" onClick={() => removeEntry("education", index)}>Remove</Button>
               </div>
             ))}
-            {sections.education.length < 6 && <button type="button" className="btn-ghost rounded-xl px-3 py-1.5 text-xs" onClick={() => addEntry("education", emptyEducation)}>+ Add education</button>}
+            {sections.education.length < 6 && <Button size="sm" icon={Plus} onClick={() => addEntry("education", emptyEducation)}>Add education</Button>}
           </div>
         );
       default:
@@ -456,100 +431,97 @@ export default function ResumeBuilder({ onNavigate }) {
 
   const breakdown = Object.values(score?.atsBreakdown || {});
   const delta = score && previousScore != null ? score.atsScore - previousScore : 0;
+  const activeLabel = SECTION_TABS.find((tab) => tab.key === active)?.label;
 
   return (
-    <main className="px-6 py-10 max-w-6xl mx-auto" style={{ color: "var(--text)", fontFamily: font }}>
-      <h1 className="text-2xl font-extrabold">
-        AI Resume <em className="gradient-text" style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontWeight: 400 }}>Builder</em>
-      </h1>
-      <p className="text-sm mt-1.5 mb-6" style={{ color: "var(--text-2)" }}>
-        Build an ATS-friendly resume. Write rough notes and let AI turn them into impact-focused bullet points.
-      </p>
-      {error && <p role="alert" className="text-red-600 text-sm mb-4">{error}</p>}
-      {message && <p role="status" className="text-sm mb-4" style={{ color: "#059669" }}>{message}</p>}
+    <>
+      <PageHeader
+        title="Resume builder"
+        description="Write rough notes, let AI turn them into ATS-friendly bullets, and watch your score as you edit."
+        actions={!loading && <>
+          <Button icon={Save} loading={saving} onClick={save}>{saving ? "Saving…" : "Save draft"}</Button>
+          <Button variant="primary" icon={Download} disabled={!resumeText} onClick={exportPdf}>Export PDF</Button>
+        </>}
+      />
+      {error && <InlineAlert className="mb-4" onDismiss={() => setError("")}>{error}</InlineAlert>}
+      {message && <InlineAlert tone="success" className="mb-4" onDismiss={() => setMessage("")}>{message}</InlineAlert>}
+      {exported && onNavigate && (
+        <InlineAlert tone="info" className="mb-4"
+          action={<Button size="sm" variant="primary" iconRight={ArrowRight} onClick={() => onNavigate("analyze", { file: exported })}>Analyze this resume</Button>}>
+          Downloaded <span className="font-medium text-ink">{exported.name}</span>. Analyze it to unlock JD matching, a roadmap and interview practice.
+        </InlineAlert>
+      )}
 
-      {loading ? <p role="status" className="text-sm">Loading your drafts…</p> : (
-        <div className="grid gap-5 lg:grid-cols-2 items-start">
-          <div className="space-y-4 min-w-0">
-            <div className="glass rounded-2xl p-5">
-              <div className="grid gap-3 sm:grid-cols-2 mb-4">
-                <div>
-                  <label htmlFor="draft-select" style={labelStyle}>Draft</label>
-                  <select id="draft-select" className={inputClass} value={draft._id || "new"} onChange={(event) => openDraft(event.target.value)}>
-                    {!draft._id && <option value="new">New draft (unsaved)</option>}
-                    {drafts.map((item) => <option key={item._id} value={item._id}>{item.title}</option>)}
-                    {draft._id && <option value="new">+ New draft</option>}
-                  </select>
-                </div>
-                <Field id="draft-title" label="Draft title" value={draft.title} maxLength={120}
-                  onChange={(value) => setDraft((current) => ({ ...current, title: value }))} />
-              </div>
-              <div className="flex justify-between items-center mb-3 gap-3 flex-wrap">
-                <div style={labelStyle}>Sections</div>
-                <button type="button" className="btn-ghost rounded-xl text-xs" style={{ padding: "5px 10px" }} onClick={importAnalysis}>
-                  ⟳ Import from latest analysis
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Resume sections">
-                {SECTION_TABS.map((tab) => {
+      {loading ? <LoadingState label="Loading your drafts" /> : (
+        <>
+          <Card className="mb-6">
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+              <Select id="draft-select" label="Draft" value={draft._id || "new"} onChange={(event) => openDraft(event.target.value)}
+                options={[
+                  ...(!draft._id ? [{ value: "new", label: "New draft (unsaved)" }] : []),
+                  ...drafts.map((item) => ({ value: item._id, label: item.title })),
+                  ...(draft._id ? [{ value: "new", label: "Start a new draft" }] : []),
+                ]} />
+              <Field id="draft-title" label="Draft title" value={draft.title} maxLength={120}
+                onChange={(value) => setDraft((current) => ({ ...current, title: value }))} />
+              <Button icon={Import} onClick={importAnalysis}>Import from latest analysis</Button>
+            </div>
+            <p className="mt-3 text-sm text-ink-muted">Template: Classic ATS (single column, standard headings).</p>
+          </Card>
+
+          <div className="grid items-start gap-6 lg:grid-cols-[200px_minmax(0,1fr)] xl:grid-cols-[184px_minmax(0,1.15fr)_minmax(0,1fr)]">
+            <nav aria-label="Resume sections" className="min-w-0">
+              {/* relative: keeps the sr-only "(complete)" labels inside the scrolling stepper. */}
+              <ol className="relative flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-1 lg:overflow-visible lg:pb-0">
+                {SECTION_TABS.map((tab, index) => {
                   const complete = isSectionComplete(sections, tab.key);
                   const selected = active === tab.key;
                   return (
-                    <button key={tab.key} type="button" className="skill-pill" aria-pressed={selected}
-                      style={selected ? activePill : complete ? okPill : { display: "inline-block" }} onClick={() => setActive(tab.key)}>
-                      {tab.label}{selected ? " ✎" : complete ? " ✓" : ""}
-                    </button>
+                    <li key={tab.key} className="shrink-0">
+                      <button type="button" onClick={() => setActive(tab.key)} aria-current={selected ? "step" : undefined}
+                        className={cx("flex w-full items-center gap-2.5 rounded-control border px-3 py-2 text-left text-sm transition-ui",
+                          selected ? "border-brand bg-brand-tint font-medium text-ink" : "border-transparent text-ink-secondary hover:bg-hover")}>
+                        <span aria-hidden="true" className={cx("flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs",
+                          complete ? "bg-success text-white" : selected ? "bg-brand text-white" : "border border-line-strong text-ink-muted")}>
+                          {complete ? <Icon icon={Check} size={12} /> : <span className="tabular">{index + 1}</span>}
+                        </span>
+                        {tab.label}
+                        {complete && <span className="sr-only"> (complete)</span>}
+                      </button>
+                    </li>
                   );
                 })}
-              </div>
-            </div>
-            <div className="glass rounded-2xl p-5">{renderSection()}</div>
-          </div>
+              </ol>
+            </nav>
 
-          <div className="space-y-4 min-w-0">
-            <div className="glass rounded-2xl flex items-center gap-4" style={{ padding: "18px 22px" }} aria-live="polite">
-              <ScoreRing score={score?.atsScore ?? null} />
-              <div className="min-w-0">
-                <div className="font-bold">Live ATS score</div>
-                <div style={{ fontSize: "12.5px", color: "var(--text-2)" }}>
-                  {scoring ? "Scoring…" : scoreError || (!score ? "Add content to see your score." :
-                    delta ? `${delta > 0 ? "+" : ""}${delta} since your last change` : "Updates as you edit")}
+            <Card as="section" title={activeLabel} className="min-w-0">{renderSection()}</Card>
+
+            {/* Stable preview: fixed A4 proportions, sticky beside the editor on wide screens. */}
+            <div className="min-w-0 space-y-4 lg:col-start-2 xl:sticky xl:top-20 xl:col-start-3 xl:row-start-1">
+              <Card padding="sm" aria-live="polite" className="flex items-center gap-4">
+                <ScoreRing value={score?.atsScore ?? null} label="ATS score" size={64} />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-ink">Live ATS score</p>
+                  <p className="text-sm text-ink-muted">
+                    {scoring ? "Scoring…" : scoreError || (!score ? "Add content to see your score." :
+                      delta ? `${delta > 0 ? "+" : ""}${delta} since your last change` : "Updates as you edit")}
+                  </p>
+                  {breakdown.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {breakdown.map((item) => (
+                        <Badge key={item.label} tone={item.score / item.max >= 0.7 ? "success" : item.score / item.max < 0.5 ? "warning" : "neutral"}>
+                          {item.label} <span className="tabular">{item.score}/{item.max}</span>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="flex flex-wrap gap-1.5 mt-1.5">
-                  {breakdown.map((item) => (
-                    <span key={item.label} className="skill-pill" style={item.score / item.max >= 0.7 ? okPill : missPill}>
-                      {item.label} {item.score}/{item.max}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              </Card>
+              <Preview draft={draft} highlighted={highlighted} />
             </div>
-            <Preview draft={draft} highlighted={highlighted} />
-            <div className="flex flex-wrap gap-2.5 justify-end items-center">
-              <label htmlFor="template-select" className="sr-only">Template</label>
-              <select id="template-select" className="btn-ghost rounded-xl px-3 py-2 text-sm" value="classic" onChange={() => {}}>
-                <option value="classic">Template: Classic ATS</option>
-              </select>
-              <button type="button" className="btn-ghost rounded-xl px-4 py-2 text-sm disabled:opacity-50" disabled={saving} onClick={save}>
-                {saving ? "Saving…" : "💾 Save draft"}
-              </button>
-              <button type="button" className="btn-primary rounded-xl px-5 py-2.5 text-sm disabled:opacity-50" disabled={!resumeText} onClick={exportPdf}>
-                ⬇ Export PDF
-              </button>
-            </div>
-            {exported && onNavigate && (
-              <div className="glass rounded-2xl flex flex-wrap items-center justify-between gap-3" style={{ padding: "14px 18px" }} aria-live="polite">
-                <span style={{ fontSize: "12.5px", color: "var(--text-2)" }}>
-                  Downloaded <strong>{exported.name}</strong>. Run the full analysis on it to unlock JD matching, a roadmap and interview practice.
-                </span>
-                <button type="button" className="btn-primary rounded-xl px-4 py-2 text-sm" onClick={() => onNavigate("analyze", { file: exported })}>
-                  Analyze this resume →
-                </button>
-              </div>
-            )}
           </div>
-        </div>
+        </>
       )}
-    </main>
+    </>
   );
 }

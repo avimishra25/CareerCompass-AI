@@ -92,7 +92,11 @@ const STEPS = [
     await page.getByRole("region", { name: "Match result" }).waitFor();
   }],
   ["roadmap", async (page, width) => { await go(page, width, "Roadmap"); await page.getByRole("list", { name: "Roadmap milestones" }).waitFor(); }],
-  ["resume-builder", async (page, width) => { await go(page, width, "Resume builder"); await page.getByRole("region", { name: "Resume preview" }).waitFor(); }],
+  ["resume-builder", async (page, width) => {
+    await go(page, width, "Resume builder");
+    await page.getByRole("region", { name: "Resume preview" }).waitFor();
+    await page.getByRole("img", { name: /^ATS score \d+ out of 100$/ }).waitFor(); // debounced live score
+  }],
   ["interview-question", async (page, width) => { await go(page, width, "Interview prep"); await page.getByRole("article", { name: "Current question" }).waitFor(); }],
   ["interview-feedback", async (page) => {
     await page.getByRole("navigation", { name: "Session questions" }).getByRole("button").first().click();
