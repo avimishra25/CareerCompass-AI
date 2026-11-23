@@ -36,7 +36,7 @@ Flask ML service (ml-service/, Hugging Face Space) ── google-genai ──►
 Copy `server/.env.example` and `ml-service/.env.example` to `.env` and fill them in. The client needs `client/.env` with `REACT_APP_API_URL=http://localhost:5000`. `INTERNAL_API_KEY` must be identical in the server and ml-service `.env` files. `README.md` → "Local Setup" has the full variable list.
 
 | Service | Directory | Command | Port |
-|---|---|---|---|
+|---|---|
 | ML service | `ml-service/` | `python -m venv venv`, activate it, `pip install -r requirements.txt`, `python -m spacy download en_core_web_sm`, then `python app.py` | 8000 |
 | Node API | `server/` | `npm install`, then `node server.js` (run it from `server/`, because multer writes to a relative `uploads/`) | 5000 |
 | Client | `client/` | `npm install`, then `npm start` | 3000 |
@@ -146,11 +146,11 @@ Test layout gotchas:
 
 ## Planned modules
 
-Not built yet. Each needs its own phase, so don't start one unless asked. They should reuse the conventions above: `protect`, per-user scoped queries and rate limits, strict body validation, sanitised errors, `llm.generate` for any LLM step with schema-validated JSON, a state-navigated page and a sidebar entry in `components/shell/navigation.js`. The static designs in `docs/ui-reference/` predate the redesign, so take only the layout ideas from them and build with `components/ui` and the design tokens above.
+Not built yet. Each needs its own phase, so don't start one unless asked. They should reuse the conventions above: `protect`, per-user scoped queries and rate limits, strict body validation, sanitised errors, `llm.generate` for any LLM step with schema-validated JSON, a state-navigated page and a sidebar entry in `components/shell/navigation.js`. Build with `components/ui` and the design tokens above.
 
-| Module | Reference design | Notes |
-|---|---|---|
-| Career Roadmap | `docs/ui-reference/roadmap.html` | **Built.** `ml-service/roadmap.py` + Flask `/roadmap`, `server/models/CareerRoadmap.js` + `/api/roadmap*` routes, `client/src/pages/Roadmap.jsx`. Use it as the template for the other modules. |
-| AI Resume Builder | `docs/ui-reference/builder.html` | **Built.** `ml-service/resume_builder.py` + Flask `/resume/enhance` and `/resume/score`, `server/lib/resumeBuilder.js` (shared draft limits/validation) + `server/models/ResumeDraft.js` + `/api/resume-builder/*`, `client/src/pages/ResumeBuilder.jsx` with `client/src/utils/resumeDraft.js` and `resumePdf.js`. |
-| Job & Internship Recommendations | `docs/ui-reference/jobs.html` | **Will not be built** (decided during the 2026-11 redesign). Keep it out of the sidebar, KPIs and copy. |
-| Interview Prep with AI Feedback | `docs/ui-reference/interview.html` | **Built.** `ml-service/interview.py` + Flask `/interview/questions` and `/interview/evaluate`, `server/lib/interview.js` (shared limits, project-title extraction, feedback validation) + `server/models/InterviewSession.js` + `/api/interview/*`, `client/src/pages/InterviewPrep.jsx`. The overall score is recomputed from the rubric in Flask and Node; never trust the model's. |
+| Module | Notes |
+|---|---|
+| Career Roadmap | **Built.** `ml-service/roadmap.py` + Flask `/roadmap`, `server/models/CareerRoadmap.js` + `/api/roadmap*` routes, `client/src/pages/Roadmap.jsx`. Use it as the template for the other modules. |
+| AI Resume Builder | **Built.** `ml-service/resume_builder.py` + Flask `/resume/enhance` and `/resume/score`, `server/lib/resumeBuilder.js` (shared draft limits/validation) + `server/models/ResumeDraft.js` + `/api/resume-builder/*`, `client/src/pages/ResumeBuilder.jsx` with `client/src/utils/resumeDraft.js` and `resumePdf.js`. |
+| Job & Internship Recommendations | **Will not be built** (decided during the 2026-11 redesign). Keep it out of the sidebar, KPIs and copy. |
+| Interview Prep with AI Feedback | **Built.** `ml-service/interview.py` + Flask `/interview/questions` and `/interview/evaluate`, `server/lib/interview.js` (shared limits, project-title extraction, feedback validation) + `server/models/InterviewSession.js` + `/api/interview/*`, `client/src/pages/InterviewPrep.jsx`. The overall score is recomputed from the rubric in Flask and Node; never trust the model's. |
