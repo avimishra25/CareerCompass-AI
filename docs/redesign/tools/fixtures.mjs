@@ -59,18 +59,18 @@ export const jdMatches = [
   jd("j1", "Software Engineer Intern, Payments", 74, "Strong", "2026-11-21T08:00:00.000Z", ["typescript", "docker", "redis"]),
   jd("j2", "Backend Developer, Logistics", 52, "Fair", "2026-11-12T08:00:00.000Z", ["postgresql", "docker", "kafka", "aws"]),
 ];
-const milestone = (n, skill, status, objective) => ({ _id: `m${n}`, week: n, skill, status, objective,
+const milestone = (n, skill, status, objective, title) => ({ _id: `m${n}`, week: n, skill, status, objective, title,
   resources: [`${skill} official docs`, "freeCodeCamp course"], miniProject: `Add ${skill} to the Expense Tracker project` });
 export const roadmap = {
   _id: "r1", userId: "u1", analysisId: "a3", jdMatchId: null, targetRole: "fullstack developer", hoursPerWeek: 8, covered: false,
   skillGaps: ["git", "sql", "typescript", "docker"], createdAt: "2026-11-20T11:00:00.000Z",
   milestones: [
-    milestone(1, "git", "done", "Branching, rebasing and pull requests on a team repository."),
-    milestone(2, "sql", "done", "SELECT, JOIN and GROUP BY on a sample dataset; design one normalised schema."),
-    milestone(3, "sql", "progress", "Indexes, transactions and migrating Expense Tracker's reports to PostgreSQL."),
-    milestone(4, "typescript", "todo", "Types, interfaces and generics; convert one React component."),
-    milestone(5, "typescript", "todo", "Strict mode across the frontend and typed API responses."),
-    milestone(6, "docker", "todo", "Containerise the Node API and run it with Docker Compose."),
+    milestone(1, "git", "done", "Branching, rebasing and pull requests on a team repository.", "Git: branching and pull requests"),
+    milestone(2, "sql", "done", "SELECT, JOIN and GROUP BY on a sample dataset; design one normalised schema.", "SQL: queries, joins and schema design"),
+    milestone(3, "sql", "progress", "Indexes, transactions and migrating Expense Tracker's reports to PostgreSQL.", "SQL: indexes, transactions and migrations"),
+    milestone(4, "typescript", "todo", "Types, interfaces and generics; convert one React component.", "TypeScript: types, interfaces and generics"),
+    milestone(5, "typescript", "todo", "Strict mode across the frontend and typed API responses.", "TypeScript: strict mode and typed APIs"),
+    milestone(6, "docker", "todo", "Containerise the Node API and run it with Docker Compose.", "Docker: containers and Docker Compose"),
   ],
 };
 export const summary = {

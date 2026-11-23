@@ -1,26 +1,78 @@
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { TARGET_ROLES } from "../constants/targetRoles";
+import { ChevronDown, ChevronRight, Circle, CircleCheck, CircleDot, FileSearch, Map, RefreshCw } from "lucide-react";
+import { Badge, Button, Card, EmptyState, Icon, InlineAlert, Input, LoadingState, PageHeader, ProgressBar, Select, cx } from "../components/ui";
+import { ROLES, roleLabel } from "../constants/targetRoles";
+import { formatSkill, longDate } from "../utils/format";
 
 const API = process.env.REACT_APP_API_URL || "http://localhost:5000";
 const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } });
 const errorMessage = (error, fallback) => error.response?.data?.error || error.response?.data?.message || fallback;
 
-const ROLES = TARGET_ROLES.filter((role) => role.value);
 const NEXT_STATUS = { todo: "progress", progress: "done", done: "todo" };
+// Visible action label for the one-click status change.
+const ACTION = { todo: "Start", progress: "Mark done", done: "Reopen" };
 const STATUS = {
-  todo:     { label: "○ Upcoming",    dot: "#c3c9de", style: { background: "rgba(136,146,180,0.12)", color: "#4a5278" } },
-  progress: { label: "● In progress", dot: "#3b6ef8", style: { background: "rgba(59,110,248,0.1)",   color: "#3b6ef8" } },
-  done:     { label: "✓ Completed",   dot: "#10b981", style: { background: "rgba(16,185,129,0.1)",   color: "#059669" } },
+  todo: { label: "Up next", icon: Circle, iconClass: "text-ink-muted", tone: "neutral" },
+  progress: { label: "In progress", icon: CircleDot, iconClass: "text-brand", tone: "brand" },
+  done: { label: "Done", icon: CircleCheck, iconClass: "text-success", tone: "success" },
 };
-const font = "Plus Jakarta Sans, sans-serif";
-const labelStyle = { fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)" };
-const missPill = { display: "inline-block", background: "rgba(244,63,126,0.07)", borderColor: "rgba(244,63,126,0.2)", color: "#e11d63" };
-const okPill = { display: "inline-block", background: "rgba(16,185,129,0.08)", borderColor: "rgba(16,185,129,0.22)", color: "#059669" };
 const defaultRole = (analysis) => {
   const role = analysis?.targetRole || analysis?.bestRole?.role;
   return ROLES.some((item) => item.value === role) ? role : ROLES[0].value;
 };
+// Older roadmaps have no subtopic title.
+const titleOf = (item) => item.title || formatSkill(item.skill);
+
+function Milestone({ item, current, last, updating, onCycle }) {
+  const status = STATUS[item.status] || STATUS.todo;
+  // Finished weeks collapse to one line; the current week and upcoming weeks are open.
+  const [open, setOpen] = useState(item.status !== "done");
+  const detailsId = `week-${item._id}`;
+  return (
+    <li className="relative flex gap-4">
+      <div className="flex flex-col items-center" aria-hidden="true">
+        <Icon icon={status.icon} size={20} className={cx("mt-4 shrink-0 bg-page", status.iconClass)} />
+        {!last && <div className="mt-1 w-px flex-1 bg-line-strong" />}
+      </div>
+      <Card as="article" padding="sm" aria-label={`Week ${item.week}: ${titleOf(item)}`}
+        className={cx("mb-3 min-w-0 flex-1", current && "border-brand ring-1 ring-brand")}>
+        <div className="flex flex-wrap items-start gap-3">
+          <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-controls={detailsId}
+            className="flex min-w-0 flex-1 basis-56 items-start gap-2 rounded-control text-left">
+            <Icon icon={open ? ChevronDown : ChevronRight} className="mt-0.5 shrink-0 text-ink-muted" />
+            <span className="min-w-0">
+              <span className="block text-sm text-ink-muted">Week {item.week}{current && " · current"}</span>
+              <span className="block text-base font-semibold text-ink">{titleOf(item)}</span>
+            </span>
+          </button>
+          <Badge tone={status.tone}>{status.label}</Badge>
+          <Button size="sm" loading={updating} aria-label={`${ACTION[item.status]} week ${item.week}`}
+            onClick={() => onCycle(item)}>
+            {ACTION[item.status]}
+          </Button>
+        </div>
+        {open && (
+          <div id={detailsId} className="mt-3 space-y-3 pl-6">
+            <p className="text-sm text-ink-secondary">{item.objective}</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <h4 className="text-sm font-medium text-ink">Free resources</h4>
+                <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                  {item.resources.map((resource) => <li key={resource}><Badge>{resource}</Badge></li>)}
+                </ul>
+              </div>
+              <div>
+                <h4 className="text-sm font-medium text-ink">Mini-project</h4>
+                <p className="mt-1.5 text-sm text-ink-secondary">{item.miniProject}</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
+    </li>
+  );
+}
 
 // `preset` comes from cross-links: { analysisId, targetRole } from an ATS report, or
 // { analysisId, jdMatchId } from a JD match. It only pre-selects; generating stays a click.
@@ -89,7 +141,7 @@ export default function Roadmap({ onNavigate, preset }) {
       setRoadmap(data);
       setNotice("");
     } catch (err) {
-      setError(errorMessage(err, "Roadmap generation unavailable. Try again."));
+      setError(errorMessage(err, "Roadmap generation is unavailable. Try again."));
     } finally {
       setBusy(false);
     }
@@ -103,7 +155,7 @@ export default function Roadmap({ onNavigate, preset }) {
         { status: NEXT_STATUS[milestone.status] }, auth());
       setRoadmap(data);
     } catch (err) {
-      setError(errorMessage(err, "Could not update milestone."));
+      setError(errorMessage(err, "Could not update the milestone."));
     } finally {
       setUpdating(null);
     }
@@ -112,137 +164,89 @@ export default function Roadmap({ onNavigate, preset }) {
   const milestones = roadmap?.milestones || [];
   const done = milestones.filter((item) => item.status === "done").length;
   const percent = milestones.length ? Math.round((done / milestones.length) * 100) : 0;
+  const currentId = milestones.find((item) => item.status !== "done")?._id;
   // A gap stays open until every milestone for it is done (or it never fit into the plan).
   const remaining = (roadmap?.skillGaps || []).filter((skill) => {
     const items = milestones.filter((item) => item.skill === skill);
     return !items.length || items.some((item) => item.status !== "done");
   });
-  const roleLabel = (value) => ROLES.find((role) => role.value === value)?.label || value;
 
   return (
-    <main className="px-6 py-10 max-w-5xl mx-auto" style={{ color: "var(--text)", fontFamily: font }}>
-      <h1 className="text-2xl font-extrabold">
-        Career <em className="gradient-text" style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontWeight: 400 }}>Roadmap</em>
-      </h1>
-      <p className="text-sm mt-1.5 mb-6" style={{ color: "var(--text-2)" }}>
-        A week-by-week plan generated from your skill gaps for the target role.
-      </p>
-      {error && <p role="alert" className="text-red-600 text-sm mb-4">{error}</p>}
-      {notice && <p aria-live="polite" className="text-sm mb-4 font-medium" style={{ color: "#3b6ef8" }}>{notice}</p>}
+    <>
+      <PageHeader title="Roadmap" description="A week-by-week plan for the skills your target role needs, prerequisites first." />
+      {error && <InlineAlert className="mb-4" onDismiss={() => setError("")}>{error}</InlineAlert>}
+      {notice && <InlineAlert tone="info" className="mb-4">{notice}</InlineAlert>}
 
-      {loading ? <p role="status" className="text-sm">Loading your roadmap…</p> : !analyses.length ? (
-        <div className="glass rounded-2xl p-6">
-          <p className="text-sm mb-4" style={{ color: "var(--text-2)" }}>A roadmap is built from a resume analysis.</p>
-          <button className="btn-primary px-5 py-3 rounded-xl text-sm" onClick={() => onNavigate("analyze")}>Upload a resume first</button>
-        </div>
-      ) : <>
-        <form onSubmit={generate} className="glass rounded-2xl p-6 mb-5 grid gap-4 md:grid-cols-2 lg:grid-cols-5 items-end">
-          <div>
-            <label htmlFor="roadmap-role" style={labelStyle}>Target role</label>
-            <select id="roadmap-role" className="input-glass block w-full rounded-xl px-3 py-2.5 mt-1.5 text-sm font-semibold" value={targetRole}
-              onChange={(event) => setTargetRole(event.target.value)} disabled={busy}>
-              {ROLES.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="roadmap-analysis" style={labelStyle}>Analysis</label>
-            <select id="roadmap-analysis" className="input-glass block w-full rounded-xl px-3 py-2.5 mt-1.5 text-sm" value={analysisId}
-              onChange={(event) => setAnalysisId(event.target.value)} disabled={busy}>
-              {analyses.map((item) => <option key={item._id} value={item._id}>{item.resumeName} — {new Date(item.createdAt).toLocaleDateString()}</option>)}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="roadmap-jd" style={labelStyle}>JD match (optional)</label>
-            <select id="roadmap-jd" className="input-glass block w-full rounded-xl px-3 py-2.5 mt-1.5 text-sm" value={jdMatchId}
-              onChange={(event) => setJdMatchId(event.target.value)} disabled={busy}>
-              <option value="">None</option>
-              {matches.map((item) => <option key={item._id} value={item._id}>{item.jdTitle} — {item.result.overall_match}/100</option>)}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="roadmap-hours" style={labelStyle}>Hours / week</label>
-            <input id="roadmap-hours" type="number" min={2} max={40} step={1} className="input-glass block w-full rounded-xl px-3 py-2.5 mt-1.5 text-sm"
-              value={hours} onChange={(event) => setHours(event.target.value)} disabled={busy} aria-describedby="hours-hint" />
-            <span id="hours-hint" className={hoursValid ? "sr-only" : "text-red-600 text-xs"}>Between 2 and 40 hours</span>
-          </div>
-          <button className="btn-primary px-5 py-3 rounded-xl text-sm disabled:opacity-50" disabled={busy || !analysisId || !hoursValid}>
-            {busy ? "Generating…" : roadmap ? "Regenerate ↻" : "Generate roadmap"}
-          </button>
-        </form>
+      {loading ? <LoadingState label="Loading your roadmap" /> : !analyses.length ? (
+        <Card>
+          <EmptyState icon={FileSearch} title="Analyze a resume first" description="A roadmap is built from the skill gaps in a resume analysis."
+            action={<Button variant="primary" onClick={() => onNavigate("analyze")}>Analyze resume</Button>} />
+        </Card>
+      ) : (
+        <div className="space-y-6">
+          <Card as="form" onSubmit={generate} aria-label="Roadmap settings">
+            {/* Full-width fields on a grid so long role and file names are never cut off. */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Select label="Target role" value={targetRole} onChange={(event) => setTargetRole(event.target.value)} disabled={busy}
+                options={ROLES.map(({ value, label }) => ({ value, label }))} />
+              <Select label="Analysis" value={analysisId} onChange={(event) => setAnalysisId(event.target.value)} disabled={busy}
+                options={analyses.map((item) => ({ value: item._id, label: `${item.resumeName} · ${longDate(item.createdAt)}` }))} />
+              <Select label="JD match (optional)" value={jdMatchId} onChange={(event) => setJdMatchId(event.target.value)} disabled={busy}
+                options={[{ value: "", label: "None" }, ...matches.map((item) => ({ value: item._id, label: `${item.jdTitle} · ${item.result.overall_match}/100` }))]} />
+              <Input label="Hours / week" type="number" min={2} max={40} step={1} value={hours} disabled={busy}
+                onChange={(event) => setHours(event.target.value)} hint="Between 2 and 40 hours"
+                error={hoursValid ? undefined : "Enter a whole number from 2 to 40"} />
+            </div>
+            <Button type="submit" variant="primary" icon={roadmap ? RefreshCw : Map} className="mt-4" loading={busy}
+              disabled={busy || !analysisId || !hoursValid}>
+              {busy ? "Generating…" : roadmap ? "Regenerate" : "Generate roadmap"}
+            </Button>
+          </Card>
 
-        {!roadmap ? (
-          <div className="glass rounded-2xl p-6 text-sm" style={{ color: "var(--text-2)" }}>
-            No roadmap yet. Choose a target role and analysis, then generate your plan.
-          </div>
-        ) : roadmap.covered ? (
-          <div className="glass rounded-2xl p-6" aria-label="Roadmap result">
-            <p className="font-bold">You already cover the core skills for {roleLabel(roadmap.targetRole)}.</p>
-            <p className="text-sm mt-1" style={{ color: "var(--text-2)" }}>Pick a JD match to plan around a specific job's requirements.</p>
-          </div>
-        ) : <>
-          <section className="grid gap-4 md:grid-cols-3 mb-5" aria-label="Roadmap summary">
-            <div className="glass rounded-2xl p-5 text-center">
-              <div className="text-2xl font-extrabold" style={{ color: "#6c63ff" }}>{milestones.length}</div>
-              <div className="text-xs mt-1" style={{ color: "var(--text-3)" }}>Weeks planned</div>
-            </div>
-            <div className="glass rounded-2xl p-5 text-center">
-              <div className="text-2xl font-extrabold" style={{ color: "#10b981" }}>{percent}%</div>
-              <div className="text-xs mt-1" style={{ color: "var(--text-3)" }}>Milestones completed</div>
-              <div className="progress-track mt-2.5" role="progressbar" aria-label="Milestones completed"
-                aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
-                <div className="progress-fill" style={{ width: `${percent}%`, background: "linear-gradient(90deg,#10b981,#0ea5c9)" }} />
-              </div>
-            </div>
-            <div className="glass rounded-2xl p-5 text-center">
-              <div className="text-2xl font-extrabold" style={{ color: "#6c63ff" }}>{remaining.length}</div>
-              <div className="text-xs mt-1" style={{ color: "var(--text-3)" }}>Skill gaps remaining</div>
-              <div className="flex flex-wrap justify-center gap-1.5 mt-2">
-                {remaining.map((skill) => <span key={skill} className="skill-pill" style={missPill}>{skill}</span>)}
-              </div>
-            </div>
-          </section>
-
-          <ol aria-label="Roadmap milestones">
-            {milestones.map((item, index) => {
-              const status = STATUS[item.status] || STATUS.todo;
-              return (
-                <li key={item._id} className="flex gap-4">
-                  <div className="flex flex-col items-center" aria-hidden="true">
-                    <div style={{ width: 14, height: 14, borderRadius: "50%", background: status.dot, marginTop: 22, boxShadow: "0 0 0 4px rgba(59,110,248,0.08)" }} />
-                    {index < milestones.length - 1 && <div style={{ flex: 1, width: 2, background: "rgba(180,190,220,0.5)", marginTop: 4 }} />}
+          {!roadmap ? (
+            <Card>
+              <EmptyState icon={Map} title="No roadmap yet" description="Choose a target role and analysis above, then generate your plan." />
+            </Card>
+          ) : roadmap.covered || !milestones.length ? (
+            <Card>
+              <EmptyState icon={CircleCheck} title="You cover this role. Pick another role or add a JD match."
+                description={`Your resume already has the core skills for ${roleLabel(roadmap.targetRole)}.`} />
+            </Card>
+          ) : (
+            <>
+              <Card as="section" aria-label="Roadmap summary">
+                <dl className="grid gap-5 sm:grid-cols-3">
+                  <div>
+                    <dt className="text-sm text-ink-muted">Weeks planned</dt>
+                    <dd className="tabular mt-1 text-xl font-semibold text-ink">{milestones.length}</dd>
                   </div>
-                  <article className="glass rounded-2xl flex-1 mb-3.5" style={{ padding: "18px 20px" }}>
-                    <div className="flex justify-between items-start gap-3">
-                      <div>
-                        <div style={labelStyle}>Week {item.week}</div>
-                        <h2 className="font-bold text-base mt-0.5">{item.skill}</h2>
-                      </div>
-                      <button type="button" className="text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap disabled:opacity-50"
-                        style={status.style} disabled={updating === item._id} onClick={() => cycle(item)}
-                        aria-label={`Week ${item.week} status: ${status.label.slice(2)}. Change status`}>
-                        {status.label}
-                      </button>
-                    </div>
-                    <p className="mt-2" style={{ fontSize: "12.5px", color: "var(--text-2)", lineHeight: 1.55 }}>{item.objective}</p>
-                    <div className="mt-2.5 flex flex-wrap gap-6 text-xs">
-                      <div>
-                        <span style={labelStyle}>Resources</span>
-                        <div className="flex flex-wrap gap-1.5 mt-1">
-                          {item.resources.map((resource) => <span key={resource} className="skill-pill" style={{ display: "inline-block" }}>{resource}</span>)}
-                        </div>
-                      </div>
-                      <div>
-                        <span style={labelStyle}>Mini-project</span>
-                        <div className="mt-1"><span className="skill-pill" style={okPill}>{item.miniProject}</span></div>
-                      </div>
-                    </div>
-                  </article>
-                </li>
-              );
-            })}
-          </ol>
-        </>}
-      </>}
-    </main>
+                  <div>
+                    <dt className="text-sm text-ink-muted">Completed</dt>
+                    <dd className="mt-1">
+                      <span className="tabular text-xl font-semibold text-ink">{percent}%</span>
+                      <ProgressBar value={percent} label="Milestones completed" tone="success" className="mt-2" />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-sm text-ink-muted">Skill gaps remaining <span className="tabular">{remaining.length}</span></dt>
+                    <dd className="mt-1.5 flex flex-wrap gap-1.5">
+                      {remaining.length ? remaining.map((skill) => <Badge key={skill} tone="danger">{formatSkill(skill)}</Badge>)
+                        : <span className="text-sm text-ink-secondary">None. Every gap is covered.</span>}
+                    </dd>
+                  </div>
+                </dl>
+              </Card>
+
+              <ol aria-label="Roadmap milestones">
+                {milestones.map((item, index) => (
+                  <Milestone key={item._id} item={item} current={item._id === currentId} last={index === milestones.length - 1}
+                    updating={updating === item._id} onCycle={cycle} />
+                ))}
+              </ol>
+            </>
+          )}
+        </div>
+      )}
+    </>
   );
 }

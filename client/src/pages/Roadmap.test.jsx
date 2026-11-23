@@ -24,32 +24,60 @@ beforeEach(() => {
   }));
 });
 
-test("renders saved milestones and summary; status badge cycles via PATCH", async () => {
+test("timeline: current week open and highlighted, finished weeks collapsed; status changes with one click", async () => {
   axios.patch.mockResolvedValue({ data: { ...roadmap, milestones: roadmap.milestones.map((item) =>
     item._id === "m3" ? { ...item, status: "progress" } : item) } });
   render(<Roadmap onNavigate={jest.fn()} />);
   expect(screen.getByRole("status")).toHaveTextContent("Loading");
 
   const list = await screen.findByRole("list", { name: "Roadmap milestones" });
-  expect(within(list).getAllByRole("listitem")).toHaveLength(4);
-  expect(within(list).getByText("Week 3: learn kubernetes")).toBeInTheDocument();
-  expect(within(list).getAllByText("Add docker to Expense Tracker")).toHaveLength(2);
-  expect(within(list).getAllByText("kubernetes docs")).toHaveLength(2);
-  expect(within(list).getAllByText("Free course")).toHaveLength(4);
+  expect(list.children).toHaveLength(4);
+  const week1 = within(list).getByRole("article", { name: "Week 1: Docker" });
+  const week3 = within(list).getByRole("article", { name: "Week 3: Kubernetes" });
+  // Current week = first not done: open and marked.
+  expect(week3).toHaveTextContent("Week 3 · current");
+  expect(within(week3).getByText("Week 3: learn kubernetes")).toBeInTheDocument();
+  expect(within(week3).getByText("Add kubernetes to Expense Tracker")).toBeInTheDocument();
+  // Finished weeks collapse to one line and expand on demand.
+  expect(within(week1).queryByText("Week 1: learn docker")).not.toBeInTheDocument();
+  fireEvent.click(within(week1).getByRole("button", { name: /Week 1\s*Docker/ }));
+  expect(within(week1).getByText("Add docker to Expense Tracker")).toBeInTheDocument();
+  expect(within(list).getAllByText("Free course")).toHaveLength(3);
 
   const summary = screen.getByRole("region", { name: "Roadmap summary" });
   expect(within(summary).getByText("50%")).toBeInTheDocument();
   expect(within(summary).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
   // docker is fully done; kubernetes is in progress; terraform never fit into the plan.
-  expect(within(summary).queryByText("docker")).not.toBeInTheDocument();
-  expect(within(summary).getByText("kubernetes")).toBeInTheDocument();
-  expect(within(summary).getByText("terraform")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Regenerate ↻" })).toBeInTheDocument();
+  expect(within(summary).queryByText("Docker")).not.toBeInTheDocument();
+  expect(within(summary).getByText("Kubernetes")).toBeInTheDocument();
+  expect(within(summary).getByText("Terraform")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: "Week 3 status: Upcoming. Change status" }));
-  expect(await screen.findByRole("button", { name: "Week 3 status: In progress. Change status" })).toBeInTheDocument();
+  fireEvent.click(within(week3).getByRole("button", { name: "Start week 3" }));
+  expect(await screen.findByRole("button", { name: "Mark done week 3" })).toBeInTheDocument();
   expect(axios.patch).toHaveBeenCalledWith(expect.stringContaining("/api/roadmap/roadmap/milestone/m3"),
     { status: "progress" }, { headers: { Authorization: "Bearer test-token" } });
+});
+
+test("milestones show their subtopic titles; a covered role shows an empty state instead of a plan", async () => {
+  const titled = { ...roadmap, skillGaps: ["rest api"], milestones: [
+    { ...milestone("t1", 1, "rest api"), title: "REST API: routing and status codes" },
+    { ...milestone("t2", 2, "rest api"), title: "REST API: validation and error handling" },
+  ] };
+  axios.get.mockImplementation((url) => Promise.resolve({ data: url.endsWith("/api/roadmap") ? titled
+    : url.endsWith("jd-match/history") ? [] : [{ _id: "analysis", resumeName: "resume.pdf", createdAt: "2026-10-05" }] }));
+  const { unmount } = render(<Roadmap onNavigate={jest.fn()} />);
+  const list = await screen.findByRole("list", { name: "Roadmap milestones" });
+  expect(within(list).getAllByRole("article").map((card) => card.getAttribute("aria-label")))
+    .toEqual(["Week 1: REST API: routing and status codes", "Week 2: REST API: validation and error handling"]);
+  unmount();
+
+  axios.get.mockImplementation((url) => Promise.resolve({ data: url.endsWith("/api/roadmap")
+    ? { ...roadmap, covered: true, skillGaps: [], milestones: [] }
+    : url.endsWith("jd-match/history") ? [] : [{ _id: "analysis", resumeName: "resume.pdf", createdAt: "2026-10-05" }] }));
+  render(<Roadmap onNavigate={jest.fn()} />);
+  expect(await screen.findByRole("heading", { name: "You cover this role. Pick another role or add a JD match." })).toBeInTheDocument();
+  expect(screen.queryByRole("list", { name: "Roadmap milestones" })).not.toBeInTheDocument();
 });
 
 test("a cross-link pre-selects the analysis, role and JD match without generating", async () => {
@@ -67,7 +95,7 @@ test("a cross-link pre-selects the analysis, role and JD match without generatin
   // With no role in the link, the role follows the pre-selected analysis, not the saved roadmap.
   expect(screen.getByLabelText("Target role")).toHaveValue("backend developer");
   expect(axios.post).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Regenerate ↻" }));
+  fireEvent.click(screen.getByRole("button", { name: "Regenerate" }));
   await waitFor(() => expect(axios.post).toHaveBeenCalledWith(expect.stringContaining("/api/roadmap"),
     { analysisId: "new", targetRole: "backend developer", hoursPerWeek: 8, jdMatchId: "jd" }, expect.anything()));
   await waitFor(() => expect(screen.queryByText(/is selected/)).not.toBeInTheDocument());
